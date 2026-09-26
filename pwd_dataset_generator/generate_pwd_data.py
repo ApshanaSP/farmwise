@@ -38,7 +38,7 @@ from datetime import date, datetime, timedelta, timezone
 GRIEVANCE_ID_FORMAT = "GRV-{date:%Y%m%d}-{seq:05d}"
 
 IST = timezone(timedelta(hours=5, minutes=30))
-WINDOW_DAYS = 90
+WINDOW_DAYS = 180
 ID_ANCHOR = date(2024, 1, 1)          # ID blocks, event lattice and lake simulation start here
 MIN_NOW = datetime(2024, 4, 1, tzinfo=IST)
 WORKS_CATALOG_START = date(2022, 7, 1)

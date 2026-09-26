@@ -36,7 +36,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 CSV_FILE = os.path.join(SCRIPT_DIR, "chennai_hospital_health_data.csv")
 
 # Rolling window (in days, including today): older dates are dropped.
-HISTORY_DAYS = 90
+HISTORY_DAYS = 180
 
 DATE_FORMAT = "%Y-%m-%d"
 
