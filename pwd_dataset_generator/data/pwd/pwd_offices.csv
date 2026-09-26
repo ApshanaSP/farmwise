@@ -1,0 +1,22 @@
+﻿office_id,office_name,wing,officer_name,designation,phone,email,taluk_codes_covered
+PWD-OFF-001,"Office of the Chief Engineer, PWD (Chennai Region)",HQ,A. Bharathi,Chief Engineer,+91-44-0000-1007,ce.chennai@example.tn.gov.in,TLK01|TLK02|TLK03|TLK04|TLK05|TLK06|TLK07|TLK08|TLK09|TLK10|TLK11|TLK12|TLK13|TLK14|TLK15|TLK16
+PWD-OFF-002,"Buildings Circle, Chennai",Buildings,G. Palanisamy,Superintending Engineer,+91-44-0000-1014,se.bldg.chennai@example.tn.gov.in,TLK01|TLK02|TLK03|TLK04|TLK05|TLK06|TLK07|TLK08|TLK09|TLK10|TLK11|TLK12|TLK13|TLK14|TLK15|TLK16
+PWD-OFF-003,"Buildings Division (North), Chennai",Buildings,J. Bharathi,Executive Engineer,+91-44-0000-1021,ee.bldg.north@example.tn.gov.in,TLK04|TLK05|TLK07|TLK11|TLK12|TLK14|TLK15
+PWD-OFF-004,"Buildings Division (South), Chennai",Buildings,G. Kalaiselvi,Executive Engineer,+91-44-0000-1028,ee.bldg.south@example.tn.gov.in,TLK01|TLK06|TLK09|TLK10|TLK13|TLK16
+PWD-OFF-005,"Buildings Division (West), Chennai",Buildings,R. Bharathi,Executive Engineer,+91-44-0000-1035,ee.bldg.west@example.tn.gov.in,TLK02|TLK03|TLK08
+PWD-OFF-006,"Medical Buildings Division, Chennai",Buildings,T. Rajendran,Executive Engineer,+91-44-0000-1042,ee.medical.bldg@example.tn.gov.in,TLK01|TLK02|TLK03|TLK04|TLK05|TLK06|TLK07|TLK08|TLK09|TLK10|TLK11|TLK12|TLK13|TLK14|TLK15|TLK16
+PWD-OFF-007,"Educational Buildings Division, Chennai",Buildings,M. Sumathi,Executive Engineer,+91-44-0000-1049,ee.edu.bldg@example.tn.gov.in,TLK01|TLK02|TLK03|TLK04|TLK05|TLK06|TLK07|TLK08|TLK09|TLK10|TLK11|TLK12|TLK13|TLK14|TLK15|TLK16
+PWD-OFF-008,"Buildings Sub-Division, Guindy",Buildings,C. Dhanalakshmi,Assistant Executive Engineer,+91-44-0000-1056,aee.bldg.guindy@example.tn.gov.in,TLK01|TLK06|TLK16
+PWD-OFF-009,"Buildings Sub-Division, Egmore",Buildings,M. Nandhini,Assistant Executive Engineer,+91-44-0000-1063,aee.bldg.egmore@example.tn.gov.in,TLK03|TLK05|TLK12
+PWD-OFF-010,"Buildings Sub-Division, Tondiarpet",Buildings,G. Anbalagan,Assistant Executive Engineer,+91-44-0000-1070,aee.bldg.tondiarpet@example.tn.gov.in,TLK11|TLK14|TLK15
+PWD-OFF-011,WRD Chennai Circle,Water Resources,J. Murugesan,Superintending Engineer,+91-44-0000-1077,se.wrd.chennai@example.tn.gov.in,TLK01|TLK02|TLK03|TLK04|TLK05|TLK06|TLK07|TLK08|TLK09|TLK10|TLK11|TLK12|TLK13|TLK14|TLK15|TLK16
+PWD-OFF-012,Adyar Basin Division,Water Resources,T. Sumathi,Executive Engineer,+91-44-0000-1084,ee.adyar@example.tn.gov.in,TLK01|TLK06|TLK09|TLK10|TLK13|TLK16
+PWD-OFF-013,Cooum Basin Division,Water Resources,G. Selvi,Executive Engineer,+91-44-0000-1091,ee.cooum@example.tn.gov.in,TLK03|TLK05|TLK08|TLK10|TLK12
+PWD-OFF-014,Kosasthalaiyar Basin Division,Water Resources,V. Gunasekaran,Executive Engineer,+91-44-0000-1098,ee.kosasthalaiyar@example.tn.gov.in,TLK02|TLK07|TLK14
+PWD-OFF-015,Buckingham Canal & Otteri Nullah Division,Water Resources,V. Karthikeyan,Executive Engineer,+91-44-0000-1105,ee.bcanal@example.tn.gov.in,TLK04|TLK10|TLK11|TLK12|TLK13|TLK14|TLK15
+PWD-OFF-016,"Chennai Lakes Sub-Division, Ambattur",Water Resources,S. Karthikeyan,Assistant Executive Engineer,+91-44-0000-1112,aee.lakes@example.tn.gov.in,TLK01|TLK02|TLK04|TLK07|TLK13|TLK16
+PWD-OFF-017,"Adyar Sub-Division, Saidapet",Water Resources,V. Meenakshi,Assistant Executive Engineer,+91-44-0000-1119,aee.saidapet@example.tn.gov.in,TLK06|TLK09|TLK10
+PWD-OFF-018,North Chennai Drainage Sub-Division,Water Resources,M. Gunasekaran,Assistant Executive Engineer,+91-44-0000-1126,aee.northdrain@example.tn.gov.in,TLK04|TLK07|TLK11|TLK15
+PWD-OFF-019,Flood Monitoring Cell & Control Room,Water Resources,S. Prabhakaran,Executive Engineer,+91-44-0000-1133,floodcell@example.tn.gov.in,TLK01|TLK02|TLK03|TLK04|TLK05|TLK06|TLK07|TLK08|TLK09|TLK10|TLK11|TLK12|TLK13|TLK14|TLK15|TLK16
+PWD-OFF-020,Water Bodies Protection (Encroachment) Cell,Water Resources,S. Palanisamy,Assistant Executive Engineer,+91-44-0000-1140,aee.wbp@example.tn.gov.in,TLK01|TLK02|TLK03|TLK04|TLK05|TLK06|TLK07|TLK08|TLK09|TLK10|TLK11|TLK12|TLK13|TLK14|TLK15|TLK16
+PWD-OFF-021,"Chennai Reservoirs Division, Puzhal",Water Resources,A. Kavitha,Executive Engineer,+91-44-0000-1147,ee.reservoirs@example.tn.gov.in,TLK02|TLK07|TLK14

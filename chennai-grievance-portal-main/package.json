@@ -1,0 +1,52 @@
+{
+  "name": "district-collector-dashboard",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "migrate": "node scripts/migrate.js",
+    "migrate:status": "node scripts/migrate.js --status",
+    "import:gcc": "node scripts/import-gcc-reference.js --streets",
+    "import:wards": "node scripts/import-ward-boundaries.js",
+    "seed:gcc": "node scripts/seed-gcc-reference.js",
+    "db:setup": "node scripts/bootstrap-db.js && node scripts/migrate.js && node scripts/seed-gcc-reference.js",
+    "bootstrap:db": "node scripts/bootstrap-db.js",
+    "derive:area-wards": "node scripts/derive-area-wards.js",
+    "export:data": "node scripts/export-complaints.js",
+    "export:excel": "node scripts/export-complaints.js && python scripts/export-to-xlsx.py",
+    "dataset:generate": "node scripts/generate-synthetic-grievances.js",
+    "dataset:export": "node scripts/export-grievance-dataset.js",
+    "dataset:validate": "node scripts/validate-grievance-dataset.js",
+    "dataset:unseed": "node scripts/generate-synthetic-grievances.js --unseed"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "dotenv": "^16.4.5",
+    "jose": "^5.9.6",
+    "leaflet": "^1.9.4",
+    "lucide-react": "^1.47.0",
+    "mysql2": "^3.11.3",
+    "next": "14.2.15",
+    "nodemailer": "^6.9.15",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/leaflet": "^1.9.12",
+    "@types/node": "^20.16.11",
+    "@types/nodemailer": "^6.4.16",
+    "@types/react": "^18.3.11",
+    "@types/react-dom": "^18.3.0",
+    "autoprefixer": "^10.4.20",
+    "eslint": "^8.57.1",
+    "eslint-config-next": "14.2.15",
+    "postcss": "^8.4.47",
+    "tailwindcss": "^3.4.13",
+    "typescript": "^5.6.3"
+  }
+}

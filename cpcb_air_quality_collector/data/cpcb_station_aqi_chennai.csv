@@ -1,0 +1,8 @@
+﻿observation_date,observation_datetime,station_id,station_name,agency,latitude,longitude,aqi,aqi_category,prominent_pollutant,averaging_period,source_name,source_url,fetch_method,fetched_at
+2026-09-25,2026-09-25T22:00:00+05:30,CPCB-arumbakkam_chennai_tnpcb,"Arumbakkam, Chennai - TNPCB",TNPCB,,,99,,,24h,CPCB CCR live city map,https://airquality.cpcb.gov.in/ccr/,playwright,2026-09-25T22:18:12+05:30
+2026-09-25,2026-09-25T22:00:00+05:30,CPCB-kodungaiyur_chennai_tnpcb,"Kodungaiyur, Chennai - TNPCB",TNPCB,,,64,,,24h,CPCB CCR live city map,https://airquality.cpcb.gov.in/ccr/,playwright,2026-09-25T22:18:12+05:30
+2026-09-25,2026-09-25T22:00:00+05:30,CPCB-manali_chennai_cpcb,"Manali, Chennai - CPCB",CPCB,,,107,,,24h,CPCB CCR live city map,https://airquality.cpcb.gov.in/ccr/,playwright,2026-09-25T22:18:12+05:30
+2026-09-25,2026-09-25T22:00:00+05:30,CPCB-manali_village_chennai_tnpcb,"Manali Village, Chennai - TNPCB",TNPCB,,,44,,,24h,CPCB CCR live city map,https://airquality.cpcb.gov.in/ccr/,playwright,2026-09-25T22:18:12+05:30
+2026-09-25,2026-09-25T22:00:00+05:30,CPCB-perungudi_chennai_tnpcb,"Perungudi, Chennai - TNPCB",TNPCB,,,74,,,24h,CPCB CCR live city map,https://airquality.cpcb.gov.in/ccr/,playwright,2026-09-25T22:18:12+05:30
+2026-09-25,2026-09-25T22:00:00+05:30,CPCB-royapuram_chennai_tnpcb,"Royapuram, Chennai - TNPCB",TNPCB,,,64,,,24h,CPCB CCR live city map,https://airquality.cpcb.gov.in/ccr/,playwright,2026-09-25T22:18:12+05:30
+2026-09-25,2026-09-25T22:00:00+05:30,CPCB-velachery_res_area_chennai_cpcb,"Velachery Res. Area, Chennai - CPCB",CPCB,,,102,,,24h,CPCB CCR live city map,https://airquality.cpcb.gov.in/ccr/,playwright,2026-09-25T22:18:12+05:30

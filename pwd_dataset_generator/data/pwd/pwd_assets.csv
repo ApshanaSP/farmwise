@@ -1,0 +1,88 @@
+﻿asset_id,asset_name,asset_type,taluk_code,locality,latitude,longitude,capacity_mcft
+PWD-AST-0001,Adambakkam Lake,lake,TLK01,Adambakkam,12.997370,80.201093,28
+PWD-AST-0002,Palavanthangal Lake,lake,TLK01,Palavanthangal,12.990992,80.204358,14
+PWD-AST-0003,Ambattur Lake,lake,TLK02,Ambattur,13.113530,80.152945,110
+PWD-AST-0004,Korattur Lake,lake,TLK02,Korattur,13.107168,80.157596,150
+PWD-AST-0005,Mogappair Eri,lake,TLK02,Mogappair,13.112793,80.155048,18
+PWD-AST-0006,Kolathur Lake,lake,TLK04,Kolathur,13.099426,80.230704,30
+PWD-AST-0007,Chetpet Lake,lake,TLK05,Chetpet,13.081960,80.261550,6
+PWD-AST-0008,Madhavaram Lake,lake,TLK07,Madhavaram,13.147624,80.232884,65
+PWD-AST-0009,Retteri Lake,lake,TLK07,Retteri,13.149649,80.228598,95
+PWD-AST-0010,Porur Lake,lake,TLK08,Porur,13.058283,80.172743,48
+PWD-AST-0011,Nolambur Lake,lake,TLK08,Nolambur,13.067293,80.167126,12
+PWD-AST-0012,Perungudi Lake,lake,TLK13,Perungudi,12.907419,80.228015,40
+PWD-AST-0013,Velachery Lake,lake,TLK16,Velachery,12.979938,80.218987,22
+PWD-AST-0014,Adyar River - Nandambakkam stretch,river_stretch,TLK01,Nandambakkam,12.995742,80.205946,
+PWD-AST-0015,Adyar River - Jafferkhanpet stretch,river_stretch,TLK06,Jafferkhanpet,13.008677,80.217664,
+PWD-AST-0016,Adyar River - Saidapet stretch,river_stretch,TLK06,Saidapet,13.012310,80.208576,
+PWD-AST-0017,Adyar River - Kotturpuram stretch,river_stretch,TLK10,Kotturpuram,13.031146,80.265396,
+PWD-AST-0018,Adyar River - Estuary stretch,river_stretch,TLK10,Santhome,13.033695,80.275006,
+PWD-AST-0019,Cooum River - Nerkundram stretch,river_stretch,TLK08,Nerkundram,13.063987,80.168760,
+PWD-AST-0020,Cooum River - Koyambedu stretch,river_stretch,TLK08,Koyambedu,13.064718,80.175012,
+PWD-AST-0021,Cooum River - Arumbakkam stretch,river_stretch,TLK03,Arumbakkam,13.078697,80.225338,
+PWD-AST-0022,Cooum River - Chetpet stretch,river_stretch,TLK05,Chetpet,13.079798,80.261687,
+PWD-AST-0023,Kosasthalaiyar River - Manali stretch,river_stretch,TLK14,Manali,13.158409,80.303570,
+PWD-AST-0024,Buckingham Canal - Ennore stretch,canal,TLK14,Ennore,13.162067,80.299250,
+PWD-AST-0025,Buckingham Canal - Korukkupet stretch,canal,TLK15,Korukkupet,13.133708,80.286246,
+PWD-AST-0026,Buckingham Canal - Basin Bridge stretch,canal,TLK12,Pulianthope,13.084717,80.254876,
+PWD-AST-0027,Buckingham Canal - Mandaveli stretch,canal,TLK10,Mandaveli,13.033476,80.261247,
+PWD-AST-0028,Buckingham Canal - Thiruvanmiyur stretch,canal,TLK16,Thiruvanmiyur,12.984591,80.220186,
+PWD-AST-0029,Buckingham Canal - Okkiyam stretch,canal,TLK13,Okkiyam Thoraipakkam,12.906025,80.221449,
+PWD-AST-0030,Otteri Nullah - Kilpauk stretch,canal,TLK12,Kilpauk,13.095375,80.257882,
+PWD-AST-0031,Otteri Nullah - Ayanavaram stretch,canal,TLK04,Ayanavaram,13.098960,80.236564,
+PWD-AST-0032,Otteri Nullah - Perambur stretch,canal,TLK11,Perambur,13.117033,80.234899,
+PWD-AST-0033,Captain Cotton Canal - Vyasarpadi stretch,canal,TLK11,Vyasarpadi,13.116504,80.238499,
+PWD-AST-0034,Virugambakkam-Arumbakkam Canal,canal,TLK08,Virugambakkam,13.063439,80.174712,
+PWD-AST-0035,Veerangal Odai,canal,TLK16,Velachery,12.979998,80.222486,
+PWD-AST-0036,Anna Nagar Macro Drain,drain,TLK03,Anna Nagar,13.071604,80.222359,
+PWD-AST-0037,Villivakkam Macro Drain,drain,TLK04,Villivakkam,13.094544,80.236872,
+PWD-AST-0038,Mambalam Canal Macro Drain,drain,TLK09,T. Nagar,13.032058,80.222838,
+PWD-AST-0039,Nanganallur Macro Drain,drain,TLK01,Nanganallur,12.995184,80.197501,
+PWD-AST-0040,Guindy Industrial Estate Storm Water Channel,drain,TLK06,Guindy Industrial Estate,13.010434,80.209192,
+PWD-AST-0041,Pallikaranai Marsh Outlet Drain,drain,TLK13,Pallikaranai,12.903576,80.225516,
+PWD-AST-0042,Kodungaiyur Canal,drain,TLK11,Kodungaiyur,13.111371,80.231612,
+PWD-AST-0043,Kathivakkam Macro Drain,drain,TLK14,Kathivakkam,13.161752,80.303125,
+PWD-AST-0044,Tondiarpet Macro Drain,drain,TLK15,Tondiarpet,13.124239,80.287755,
+PWD-AST-0045,Madhavaram Surplus Drain,drain,TLK07,Madhavaram Milk Colony,13.144554,80.237865,
+PWD-AST-0046,Valasaravakkam Macro Drain,drain,TLK08,Valasaravakkam,13.064607,80.165757,
+PWD-AST-0047,Velachery Lake Surplus Sluice,sluice,TLK16,Velachery,12.978818,80.222814,
+PWD-AST-0048,Ambattur Lake Sluice,sluice,TLK02,Ambattur,13.112066,80.153974,
+PWD-AST-0049,Korattur Lake Sluice,sluice,TLK02,Korattur,13.105095,80.157042,
+PWD-AST-0050,Retteri Lake Sluice,sluice,TLK07,Retteri,13.151695,80.229174,
+PWD-AST-0051,Adambakkam Lake Sluice,sluice,TLK01,Adambakkam,12.993358,80.199717,
+PWD-AST-0052,"Otteri Nullah Regulator, Basin Bridge",sluice,TLK12,Pulianthope,13.084547,80.256183,
+PWD-AST-0053,Ennore Creek Regulator,sluice,TLK14,Ennore,13.162631,80.300394,
+PWD-AST-0054,Adyar River Bund - Jafferkhanpet,bund,TLK06,Jafferkhanpet,13.006997,80.221169,
+PWD-AST-0055,Adyar River Bund - Kotturpuram,bund,TLK10,Kotturpuram,13.029530,80.264971,
+PWD-AST-0056,Cooum River Bund - Arumbakkam,bund,TLK03,Arumbakkam,13.078195,80.223654,
+PWD-AST-0057,Velachery Lake Bund,bund,TLK16,Velachery,12.978403,80.219815,
+PWD-AST-0058,Retteri Lake Bund,bund,TLK07,Retteri,13.149420,80.230218,
+PWD-AST-0059,Korattur Lake Bund,bund,TLK02,Korattur,13.107742,80.157032,
+PWD-AST-0060,Kosasthalaiyar Bund - Manali,bund,TLK14,Manali,13.161052,80.302257,
+PWD-AST-0061,Porur Lake Bund,bund,TLK08,Porur,13.057840,80.170996,
+PWD-AST-0062,Rajiv Gandhi Govt General Hospital - Tower Block,govt_building,TLK05,Periamet,13.081306,80.270069,
+PWD-AST-0063,"Institute of Child Health, Egmore",govt_building,TLK05,Egmore,13.079334,80.258576,
+PWD-AST-0064,Govt Kilpauk Medical College Hospital,govt_building,TLK12,Kilpauk,13.093366,80.255223,
+PWD-AST-0065,Govt Stanley Hospital - OP Block,govt_building,TLK15,Old Washermanpet,13.127999,80.290793,
+PWD-AST-0066,Govt Royapettah Hospital,govt_building,TLK10,Royapettah,13.031452,80.265958,
+PWD-AST-0067,"Govt Peripheral Hospital, Periyar Nagar",govt_building,TLK04,Periyar Nagar,13.100215,80.229443,
+PWD-AST-0068,"Govt Peripheral Hospital, K.K. Nagar",govt_building,TLK09,K.K. Nagar,13.038361,80.221086,
+PWD-AST-0069,King Institute of Preventive Medicine,govt_building,TLK06,Guindy,13.006109,80.213798,
+PWD-AST-0070,"Govt Hr Sec School, Ashok Nagar",govt_building,TLK09,Ashok Nagar,13.034198,80.226733,
+PWD-AST-0071,"Govt Girls Hr Sec School, Ambattur",govt_building,TLK02,Ambattur,13.114139,80.154929,
+PWD-AST-0072,"Govt Polytechnic College, Taramani",govt_building,TLK16,Taramani,12.981574,80.213362,
+PWD-AST-0073,Ezhilagam Govt Office Complex,govt_building,TLK10,Triplicane,13.030363,80.269569,
+PWD-AST-0074,"Collectorate Building, Rajaji Salai",govt_building,TLK15,George Town,13.119395,80.287464,
+PWD-AST-0075,Sholinganallur Taluk Office,govt_building,TLK13,Sholinganallur,12.898182,80.227821,
+PWD-AST-0076,"Maraimalai Adigal Bridge, Saidapet",bridge,TLK06,Saidapet,13.012174,80.209487,
+PWD-AST-0077,"Thiru. Vi. Ka. Bridge, Adyar",bridge,TLK10,Adyar,13.033868,80.258870,
+PWD-AST-0078,Napier Bridge,bridge,TLK10,Triplicane,13.032077,80.268082,
+PWD-AST-0079,Aminjikarai Cooum Bridge,bridge,TLK03,Aminjikarai,13.072253,80.222537,
+PWD-AST-0080,Basin Bridge,bridge,TLK12,Pulianthope,13.083164,80.255966,
+PWD-AST-0081,Manali Kosasthalaiyar Causeway,bridge,TLK14,Manali,13.160959,80.301620,
+PWD-AST-0082,Okkiyam Madavu Bridge,bridge,TLK13,Okkiyam Thoraipakkam,12.907601,80.223651,
+PWD-AST-0083,Chembarambakkam Reservoir,lake,,Chembarambakkam,12.972000,80.052000,3645
+PWD-AST-0084,Puzhal Reservoir (Red Hills),lake,,Puzhal,13.164000,80.178000,3300
+PWD-AST-0085,Poondi Reservoir (Sathyamoorthy Sagar),lake,,Poondi,13.194000,79.860000,3231
+PWD-AST-0086,Cholavaram Reservoir,lake,,Cholavaram,13.230000,80.145000,1081
+PWD-AST-0087,Kannankottai-Thervoy Kandigai Reservoir,lake,,Kannankottai,13.400000,79.965000,500

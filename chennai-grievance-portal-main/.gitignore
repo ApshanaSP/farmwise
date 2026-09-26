@@ -1,0 +1,20 @@
+node_modules/
+.next/
+out/
+build/
+.env
+.env.local
+*.log
+npm-debug.log*
+*.tsbuildinfo
+next-env.d.ts
+.DS_Store
+public/uploads/profile/*
+!public/uploads/profile/.gitkeep
+public/uploads/complaints/*
+!public/uploads/complaints/.gitkeep
+exports/
+# Grievance dataset: contains personal data from real complaints.
+# The data dictionary is documentation only and stays tracked.
+data/datasets/*
+!data/datasets/README.md
