@@ -39,18 +39,24 @@ def _save_state(s: dict) -> None:
     STATE.write_text(json.dumps(s, indent=2), encoding="utf-8")
 
 
-def refresh(settings, force: bool = False) -> list[str]:
+def refresh(settings, force: bool = False, only: set[str] | None = None) -> list[str]:
+    from dintel import sync
+    cal = sync.write_inputs(settings)    # shared rain calendar for the generators' own options
+    fill = {"grievance_rain_days": ",".join(cal["grievance_rain_days"])}
     st = _state()
     ran = []
     now = time.time()
     for job in settings.raw.get("refresh", []):
+        if only and job["name"] not in only:
+            continue
         last = st.get(job["name"], {}).get("last_run", 0)
         if not force and now - last < job["every_minutes"] * 60:
             continue
         cwd = REPO_DIR / job["cwd"]
-        log.info("refresh %s: %s (in %s)", job["name"], " ".join(job["cmd"]), cwd)
+        cmd = [c.format(**fill) if "{" in c else c for c in job["cmd"]]
+        log.info("refresh %s: %s (in %s)", job["name"], " ".join(cmd), cwd)
         try:
-            p = subprocess.run(job["cmd"], cwd=cwd, capture_output=True, text=True, timeout=3600,
+            p = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=3600,
                                encoding="utf-8", errors="replace")
             ok = p.returncode == 0
             tail = (p.stdout or "")[-400:] + (p.stderr or "")[-400:]
@@ -80,6 +86,8 @@ def main() -> None:
     ap.add_argument("--every", type=int, default=15, help="watch interval in minutes")
     ap.add_argument("--config", default=None)
     ap.add_argument("--no-overlay", action="store_true", help="skip the scenario overlay")
+    ap.add_argument("--only", default="", help="refresh only these sources, comma-separated (e.g. news,imd)")
+    ap.add_argument("--no-build", action="store_true", help="refresh without rebuilding")
     ap.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args()
     setup_logging(args.verbose)
@@ -90,11 +98,24 @@ def main() -> None:
 
     if args.command == "build":
         m = build(settings)
+        st = _state()
+        st["_last_build_fingerprint"] = _inputs_fingerprint(settings)
+        _save_state(st)
         print(json.dumps({k: m[k] for k in ("as_of", "runtime_s", "dedup", "geo_holdout", "flood_day_correlation_before_overlay",
                                              "flood_day_correlation_after_overlay") if k in m}, indent=2, default=str))
     elif args.command == "refresh":
-        refresh(settings, force=args.all)
-        build(settings)
+        only = {x.strip() for x in args.only.split(",") if x.strip()} or None
+        refresh(settings, force=args.all, only=only)
+        st = _state()
+        fp = _inputs_fingerprint(settings)
+        if args.no_build:
+            return
+        if fp != st.get("_last_build_fingerprint"):
+            build(settings)
+            st["_last_build_fingerprint"] = fp
+            _save_state(st)
+        else:
+            log.info("no source file changed since the last build; skipping the rebuild")
     else:
         last = None
         while True:

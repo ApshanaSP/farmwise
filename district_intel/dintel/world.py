@@ -152,7 +152,9 @@ def build_calendar(ctx: Ctx, events: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     # IMD warnings (real) also mark rain days
     imd = events[(events["source"] == "imd")]
     imd_days = {str(d) for d in imd["occurred_at"].dt.tz_convert(IST).dt.date}
-    world_days = sorted(reflect["grievance"] | reflect["police"] | reflect["pwd"] | imd_days)
+    # rain days are the ones a calendar declares; a spike in one source alone is a local event, not weather
+    in_window = {str(i) for i in counts.index}
+    world_days = sorted(((declared["grievance"] | declared["police"]) & in_window) | imd_days)
     # response size per source = mean excess on its own rain days
     uplift = {}
     for s in base:
@@ -404,8 +406,11 @@ def build(settings: Settings, ref: Reference, wards: WardIndex, events: pd.DataF
         if pd.Timestamp(ds, tz=IST) > as_of:
             continue
         reflected = set(day.reflected_by.split("|")) if day.reflected_by else set()
-        k = int(np.clip(round((lo_k + (hi_k - lo_k) * min(day.rain_intensity, 1.5) / 1.5)), lo_k, hi_k))
-        deficit = {s: (0 if s in reflected else info["uplift_per_rain_day"][s] * float(ctx.rng.uniform(0.6, 1.0)))
+        k = int(np.clip(round((lo_k + (hi_k - lo_k) * min(max(day.rain_intensity, 0.5), 1.5) / 1.5)), lo_k, hi_k))
+        # sources that did not respond get their usual rain-day volume; sources that did get one or two
+        # records per shared incident, so every rain incident is seen from all three sources
+        deficit = {s: (k * float(ctx.rng.uniform(1.0, 1.6)) if s in reflected else
+                       info["uplift_per_rain_day"][s] * float(ctx.rng.uniform(0.6, 1.0)))
                    for s in ("grievance", "police", "pwd")}
         day_flood = flood[flood["reported_at"].dt.tz_convert(IST).dt.date.astype(str) == ds]
         existing = day_flood[day_flood["source"].isin(reflected) & day_flood["lat"].notna() & day_flood["ward_no"].notna()]
@@ -554,13 +559,13 @@ def build(settings: Settings, ref: Reference, wards: WardIndex, events: pd.DataF
     ev = pd.DataFrame(rows)
     for c in ("occurred_at", "reported_at", "closed_at", "status_at", "first_action_at"):
         if c in ev:
-            ev[c] = pd.to_datetime(ev[c], utc=True).dt.tz_convert(IST)
+            ev[c] = pd.to_datetime(ev[c], utc=True).dt.tz_convert(IST).dt.floor("s")
     extras = ev[[c for c in ("_street", "_area", "_locality", "_landmark") if c in ev.columns]]
     evc = conform(ev, EVENT_COLUMNS)
     for c in extras.columns:
         evc[c] = extras[c].values
     tl = pd.DataFrame(tls, columns=["event_id", "at", "step", "status_std", "actor", "note", "source"])
-    tl["at"] = pd.to_datetime(tl["at"], utc=True).dt.tz_convert(IST)
+    tl["at"] = pd.to_datetime(tl["at"], utc=True).dt.tz_convert(IST).dt.floor("s")
     ac = conform(pd.DataFrame(acts), ACTION_COLUMNS)
     tr = pd.DataFrame(truth)
     log.info("overlay: %d world rain days, %d planted records (%s), %d adopted records, %d world events",

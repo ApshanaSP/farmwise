@@ -54,12 +54,17 @@ def _extra_places(settings: Settings, pwd_events: pd.DataFrame) -> pd.DataFrame:
 
 
 def _flood_corr(events: pd.DataFrame) -> dict:
+    """Daily Spearman (strict) and 3-day-episode Pearson (a rain day and the two after it: complaints lag the rain)."""
     e = events[(events["category_family"] == "FLOOD") & events["source"].isin(["grievance", "police", "pwd"])]
     c = e.groupby([e["reported_at"].dt.tz_convert(IST).dt.date, "source"]).size().unstack(fill_value=0)
-    out = {}
+    c.index = pd.to_datetime(c.index)
+    c = c.asfreq("D", fill_value=0)
+    ep = c.rolling(3, min_periods=1).sum()
+    out = {"daily_spearman": {}, "episode_3day_pearson": {}}
     for a, b in (("grievance", "police"), ("grievance", "pwd"), ("police", "pwd")):
         if a in c and b in c:
-            out[f"{a}~{b}"] = round(float(spearmanr(c[a], c[b]).statistic), 3)
+            out["daily_spearman"][f"{a}~{b}"] = round(float(spearmanr(c[a], c[b]).statistic), 3)
+            out["episode_3day_pearson"][f"{a}~{b}"] = round(float(ep[a].corr(ep[b])), 3)
     return out
 
 
@@ -91,6 +96,7 @@ def build(settings: Settings, only_steps: set[str] | None = None) -> dict:
     events = pd.concat([base, NE], ignore_index=True)
     events["category_family"] = events["category_code"].map(ref.family)
     events["support_depts"] = events["category_code"].map(lambda c: "|".join(ref.cat.get(c, ref.cat["OTHER"]).get("support") or []))
+    metrics["news_gate"] = N.get("gate_eval", {})
     metrics["news_funnel"] = {"feed_rows": N["raw_rows"], "unique_urls": N["unique_urls"], "documents": len(docs),
                               "stories": int(docs["story_id"].nunique()), "incident_articles": int(docs["is_incident"].sum()),
                               "incident_events": int(len(NE)), "with_full_text": int((docs["body_status"] == "full").sum()),
@@ -284,6 +290,11 @@ def _reports(dir_, metrics, S, B, as_of) -> None:
     L += ["## Category classifier (multilingual, held-out 20%)", f"- {json.dumps(metrics.get('category_classifier'))}", ""]
     L += ["## One shared world", f"- Flood-day correlation before overlay: {json.dumps(metrics.get('flood_day_correlation_before_overlay'))}",
           f"- After overlay: {json.dumps(metrics.get('flood_day_correlation_after_overlay'))}", f"- Overlay: {json.dumps(metrics.get('overlay'), default=str)}", ""]
+    ng = metrics.get("news_gate", {})
+    L += ["## News incident filter (300 hand labels, stratified; population-weighted 5-fold cross-validation)",
+          f"- Weak labels only: {json.dumps(ng.get('weak_labels_only'))}",
+          f"- Weak + hand labels: {json.dumps(ng.get('weak_plus_hand_labels_cv'))} at threshold {ng.get('threshold')}",
+          f"- Features: {ng.get('features')}; story merges from embeddings: {json.dumps(ng.get('story_merges'))}", ""]
     L += ["## News funnel", f"- {json.dumps(metrics.get('news_funnel'))}", "",
           f"## Briefings", f"- Unverified numbers across all briefings: {metrics.get('briefing_unverified_numbers')}", ""]
     (dir_ / "evaluation.md").write_text("\n".join(L), encoding="utf-8")

@@ -11,14 +11,28 @@ REST, Playwright, generators). This layer reads their output files, and
 ```bash
 cd district_intel
 pip install -r requirements.txt
-python run_pipeline.py build              # about 2 minutes on a laptop
-python -m pytest -q tests                 # 14 fast tests
-python run_pipeline.py refresh            # run the sources that are due, then build
+python run_pipeline.py build              # about 3.5 minutes on a laptop CPU
+python -m pytest -q tests                 # 18 fast tests
+python run_pipeline.py refresh            # run the sources that are due; rebuild only if a file changed
+python run_pipeline.py refresh --all --only news,imd --no-build   # force some sources, skip the build
 python run_pipeline.py watch --every 15   # keep refreshing and rebuilding
 ```
 
-`scripts/run_intel.bat` runs `refresh` for Windows Task Scheduler (the command to
-register it is in the file).
+`scripts/run_intel.bat` runs `refresh`. It is registered in Windows Task Scheduler
+as **DistrictIntel**, every 30 minutes (`schtasks /Query /TN DistrictIntel`;
+remove with `schtasks /Delete /TN DistrictIntel /F`). Each source runs on its own
+interval from `config.yaml` (news, IMD, CPCB hourly; CFM every 3 hours; the synthetic
+generators daily).
+
+### One rain calendar for every generator
+
+`dintel/sync.py` reads the police generator's heavy-rain days
+(`police_dataset_generator/config/events.json`) plus IMD warning days and hands them
+to the other generators through their **own options**: `--rain-days` for grievances,
+`--rainfall-csv` for PWD. It runs before every refresh, so all synthetic sources keep
+the same weather. All four generators produce 180 days (police and grievances via
+`--days 180`; PWD and hospitals via their `WINDOW_DAYS` / `HISTORY_DAYS` constants,
+changed from 90 to 180 on 27 Sep 2026).
 
 ## What it produces (`output/`, git-ignored)
 
@@ -63,7 +77,7 @@ load (8 sources) -> classify -> locate -> overlay -> dedup -> link -> incidents
 |---|---|---|
 | Load | One loader per source; personal data is not copied (mobile -> keyed hash) | `dintel/loaders/` |
 | Categories | Crosswalk tables for structured sources; a char-n-gram classifier trained on labelled grievance, police and PWD text for "Other" complaints and news | `reference/category_map.yaml`, `dintel/classify.py` |
-| News | One document per URL, Google copies merged into publisher copies, story clusters (TF-IDF cosine within 48 h), report type, weakly supervised incident gate, the news pipeline's own Tamil-aware gazetteer | `dintel/loaders/news.py` |
+| News | One document per URL, Google copies merged into publisher copies, story clusters (character n-grams, then multilingual-e5 embeddings at cosine 0.95 within 24 h), report type (scheduled power-cut notices excluded), incident filter trained on weak labels plus 300 hand labels, the news pipeline's own Tamil-aware gazetteer | `dintel/loaders/news.py`, `dintel/embed.py` |
 | Location | Point-in-polygon on the 200 GCC wards, snapping within 500 m (flagged), ward -> taluk by majority vote of coded points | `dintel/geo.py`, `dintel/geolocate.py` |
 | Scenario overlay | One shared world for the separately generated sources (see below) | `dintel/world.py` |
 | Duplicates | Union-find over blocked pairs; the portal's rule for grievances plus officers' own "Duplicate of" decisions; police and PWD rules | `dintel/dedup.py` |
@@ -102,20 +116,41 @@ the environment to let the Briefing agent rewrite its text (accepted only if the
 numeric verifier passes) and the Linker agent suggest decisions on gray-band pairs.
 Calls are capped by `llm.max_calls_per_run`. Everything works without it.
 
+## Hand labels for the news filter
+
+`reference/labels/news_incident_labels.csv` holds 300 news articles drawn by stratified
+sampling (150 the old filter accepted, 75 just below its threshold, 75 far below),
+labelled by Claude as a draft (`labeled_by = claude-draft`, 42 marked `low` confidence).
+**Please spot-check them**: change `label_incident` where you disagree and put your
+name in `reviewed_by`. The next build retrains on them. Labelling rules:
+
+* 1 = a specific event or condition in Chennai that a department must act on or
+  monitor: civic failures, accidents, crimes that happened here, collapses, fires,
+  disease spread, protests and road blockades.
+* 0 = scheduled notices (power-cut lists), announcements and inspections, politics,
+  court proceedings, statistics and reports, arrests or seizures for crimes elsewhere
+  and follow-ups on older cases, business, entertainment, forecasts.
+* `label_in_district` records location separately (1, 0 or ?), so place errors and
+  topic errors can be measured apart.
+
+Scores are population-weighted (each label carries its stratum weight) and come from
+5-fold cross-validation, so the model is never scored on labels it trained on.
+
 ## Known limits
 
+* **News filter:** F1 0.63 (precision 0.69, recall 0.57) with the hand labels, up from
+  about 0.41 for the first rule-trained version. About 4 in 10 incident articles are
+  still missed; more labels are the fastest way to improve it.
+* **English-Tamil story merging:** multilingual-e5-small cannot tell a same-event pair
+  from two different accidents on the same day using headlines (same-event pairs score
+  0.84-0.98; unrelated English-Tamil pairs reach 0.86). The strict rule therefore merges
+  none; same-language merges (129) were checked by hand and are correct.
 * Synthetic grievance street names are not tied to their map pins (median 2.3 km
-  apart), so text-only geo-resolution cannot be validated on them. Validate on real
-  complaints or hand-labelled news.
-* 98.9% of news rows are Google News headline snippets (median 11 words); only 183
-  articles have full text. Extraction from news is limited until publisher text is
-  recovered where robots.txt allows.
-* The classifier scores near 0.99 because complaint texts come from templates;
-  expect lower on real text.
-* Story clustering uses character n-grams, which cannot match a Tamil headline to an
-  English one about the same event (for example the 22-23 Sep Washermanpet balcony
-  collapse appears as separate Tamil and English items). A multilingual embedding
-  model (BGE-M3 or multilingual-e5, about 0.5-2 GB, not downloaded here) closes this gap.
-* Station coordinates for CPCB and CFM are approximate (`reference/facilities.yaml`
-  lists the precision of each).
-* All sources cover about 90 days, so there is no previous quarter to compare with.
+  apart), so text-only geo-resolution cannot be validated on them.
+* 98% of news rows are Google News headline snippets; only a few hundred articles
+  have full text.
+* The category classifier scores near 0.99 because complaint texts come from
+  templates; expect lower on real text.
+* Station coordinates for CPCB and CFM are approximate (`reference/facilities.yaml`).
+* Rainfall and air-quality history only starts accumulating now that the collectors
+  run on a schedule; `docs/data_request_farmwiseai.md` asks FarmwiseAI for history.

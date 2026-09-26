@@ -16,13 +16,17 @@ import pandas as pd
 import yaml
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
-from sklearn.model_selection import cross_val_predict
+from scipy.sparse import csr_matrix, hstack
+from sklearn.model_selection import StratifiedKFold
 
+from .. import embed
 from .. import severity as sev
 from .. import textproc as tp
 from ..refdata import Reference
 from ..schema import DOC_COLUMNS, EVENT_COLUMNS, conform
-from ..util import Settings, UnionFind, log, mixed_to_ist, sha256_file, stable_id
+from ..util import REF_DIR, Settings, UnionFind, log, mixed_to_ist, sha256_file
+
+NON_INCIDENT_TYPES = ["service_notice", "announcement", "court", "politics", "entertainment_sport", "business"]
 
 PRECISION = {"locality": 1500.0, "zone": 4000.0, "taluk": 4000.0, "district": 15000.0}
 GEO_CONF = {"locality": 0.7, "zone": 0.55, "taluk": 0.5, "district": 0.3}
@@ -33,6 +37,9 @@ OTHER_DISTRICTS = re.compile(
     r"Tirupattur|Kallakurichi|Perambalur|Ariyalur|Mayiladuthurai|Tenkasi|Puducherry|Bengaluru|Hyderabad|Delhi|Mumbai|Kerala|Andhra)\b")
 
 REPORT_TYPE_RULES = [
+    # scheduled maintenance outages ("power cut tomorrow: full list of areas") are notices, not incidents
+    ("service_notice", re.compile(r"power ?cut (today|tomorrow|on )|power shutdown|outage (list|on )|affected areas|check (timings|full list|affected)|"
+                                  r"(நாளை|இன்று).{0,30}மின்(சார)?\s?தடை|மின்\s?தடை ஏற்படும்|மின்தடை.{0,20}(பட்டியல்|பகுதிகள்|இடங்கள்)|பவர் கட்", re.I)),
     ("court", re.compile(r"high court|supreme court|\bbench\b|petition|\bPIL\b|\bHC\b|writ|உயர் நீதிமன்ற|நீதிமன்ற", re.I)),
     ("announcement", re.compile(r"inaugurat|launch|unveil|to be held|will be held|scheme|tender|announced|flagged off|"
                                 r"திறந்து வைத்தார்|தொடங்கி வைத்தார்|அறிவிப்பு|அறிவித்த|திட்டம்", re.I)),
@@ -202,28 +209,56 @@ def load(settings: Settings, ref: Reference, extra_places: pd.DataFrame) -> dict
     d["statewide_dateline"] = (no_local & text.str.contains(OTHER_DISTRICTS)).astype(int)
     d["is_district"] = (1 - d["statewide_dateline"]).astype(int)
 
-    # ---- 6. incident gate: weak labels -> logistic regression on char+word n-grams
+    # ---- 6. incident gate: weak labels + hand labels -> logistic regression on char n-grams + multilingual embeddings
     strong = np.array([len(STRONG_INCIDENT.findall(t)) for t in text])
-    neg_type = d["report_type"].isin(["announcement", "politics", "entertainment_sport", "business", "court"]).to_numpy()
+    neg_type = d["report_type"].isin(NON_INCIDENT_TYPES).to_numpy()
     weak = np.full(len(d), -1)
     weak[(strong >= 2) & ~neg_type & (d["is_district"] == 1).to_numpy()] = 1
     weak[(strong == 0) & neg_type] = 0
     weak[(strong == 0) & (d["report_type"] == "other").to_numpy()] = 0
+    weak[(d["report_type"] == "service_notice").to_numpy()] = 0
     vec = TfidfVectorizer(analyzer="char_wb", ngram_range=(2, 5), min_df=3, max_features=150_000, sublinear_tf=True)
     X = vec.fit_transform(text.map(tp.normalize))
-    lab = weak >= 0
-    clf = LogisticRegression(max_iter=2000, C=4.0, class_weight="balanced")
-    cv = cross_val_predict(clf, X[lab], weak[lab], cv=5, method="predict_proba")[:, 1]
-    pos_cv = np.sort(cv[weak[lab] == 1])
-    thr = float(pos_cv[int(0.05 * len(pos_cv))]) if len(pos_cv) else 0.5   # keeps 95% of weak positives
-    clf.fit(X[lab], weak[lab])
-    prob = clf.predict_proba(X)[:, 1]
+    E = embed.encode((d["title"].fillna("") + ". " + d["summary"].fillna("").str.slice(0, 300)).tolist())
+    if E is not None:
+        X = hstack([X, csr_matrix(E * 2.0)]).tocsr()
+    gold, gate_eval = _gold(d), {}
+    gidx = d.index[d["doc_id"].isin(gold.index)].to_numpy()
+    gy = d.loc[gidx, "doc_id"].map(gold["label_incident"]).to_numpy().astype(int)
+    gw = d.loc[gidx, "doc_id"].map(gold["w"]).to_numpy()
+    weak_idx = np.where((weak >= 0) & ~np.isin(np.arange(len(d)), gidx))[0]
+
+    def fit(extra_idx, extra_y, gold_weight=3.0):
+        idx = np.concatenate([weak_idx, extra_idx]).astype(int)
+        y = np.concatenate([weak[weak_idx], extra_y]).astype(int)
+        sw = np.concatenate([np.ones(len(weak_idx)), np.full(len(extra_idx), gold_weight)])
+        return LogisticRegression(max_iter=3000, C=2.0, class_weight="balanced").fit(X[idx], y, sample_weight=sw)
+
+    thr = 0.5
+    if len(gidx) >= 50:
+        cv_weak, cv_mix = np.zeros(len(gidx)), np.zeros(len(gidx))
+        base = fit(np.array([], int), np.array([], int))
+        for tr, te in StratifiedKFold(5, shuffle=True, random_state=3).split(gidx, gy):
+            cv_weak[te] = base.predict_proba(X[gidx[te]])[:, 1]
+            cv_mix[te] = fit(gidx[tr], gy[tr]).predict_proba(X[gidx[te]])[:, 1]
+        blocked = d.loc[gidx, "report_type"].isin(NON_INCIDENT_TYPES).to_numpy()
+        best = max(((t, _wmetrics(cv_mix >= t, gy, gw, blocked)) for t in np.arange(0.2, 0.9, 0.025)), key=lambda x: x[1]["f1"])
+        best_w = max(((t, _wmetrics(cv_weak >= t, gy, gw, blocked)) for t in np.arange(0.2, 0.9, 0.025)), key=lambda x: x[1]["f1"])
+        thr = float(round(best[0], 3))
+        gate_eval = {"gold_labels": int(len(gidx)), "gold_positive": int(gy.sum()), "threshold": thr,
+                     "weak_labels_only": {**best_w[1], "threshold": float(round(best_w[0], 3))},
+                     "weak_plus_hand_labels_cv": best[1],
+                     "features": "char n-grams" + (" + multilingual-e5 embeddings" if E is not None else "")}
+        model = fit(gidx, gy)
+    else:
+        model = fit(np.array([], int), np.array([], int))
+    prob = model.predict_proba(X)[:, 1]
     d["incident_conf"] = prob.round(3)
-    gate = (prob >= thr) & (d["is_district"] == 1).to_numpy() & ~d["report_type"].isin(["announcement", "court", "politics", "entertainment_sport", "business"]).to_numpy()
+    gate = (prob >= thr) & (d["is_district"] == 1).to_numpy() & ~d["report_type"].isin(NON_INCIDENT_TYPES).to_numpy()
     d["is_incident"] = gate.astype(int)
-    d["incident_method"] = f"weak_supervision_logreg(thr={thr:.2f})"
-    log.info("news: %d rows -> %d URLs -> %d documents; %d stories; incident gate keeps %d (threshold %.2f, %d weak labels)",
-             raw_rows, unique_urls, len(d), d["story_id"].nunique(), int(gate.sum()), thr, int(lab.sum()))
+    d["incident_method"] = f"logreg weak+hand labels (thr={thr:.2f})" if len(gidx) >= 50 else f"logreg weak labels (thr={thr:.2f})"
+    log.info("news: %d rows -> %d URLs -> %d documents; incident gate keeps %d (threshold %.2f); eval %s",
+             raw_rows, unique_urls, len(d), int(gate.sum()), thr, gate_eval)
 
     # ---- 7. category by keywords (the classifier fills the rest later)
     kw = []
@@ -270,9 +305,82 @@ def load(settings: Settings, ref: Reference, extra_places: pd.DataFrame) -> dict
     cas = [tp.casualties(t) for t in text]
     d["dead"] = [c[0] for c in cas]
     d["injured"] = [c[1] for c in cas]
+
+    # ---- 7b. stories across languages: embeddings + same category (character n-grams cannot match Tamil to English)
+    if E is not None:
+        merged = _embed_stories(d, E)
+        log.info("news: embedding story merges %s", merged)
+        gate_eval["story_merges"] = merged
+        d = d.sort_values("published_at")
+        d["story_role"] = np.where(d.groupby("story_id").cumcount() == 0, "first_report", "follow_up")
+        d["outlet_count"] = d.groupby("story_id")["publisher"].transform("nunique")
+        d = d.sort_index()
+
     d["source_kind"] = "news"
     d["_text"] = text
-    return {"documents": d, "raw_rows": raw_rows, "unique_urls": unique_urls, "snapshot": snap}
+    return {"documents": d, "raw_rows": raw_rows, "unique_urls": unique_urls, "snapshot": snap, "gate_eval": gate_eval}
+
+
+def _gold(d: pd.DataFrame) -> pd.DataFrame:
+    """Hand labels (reference/labels/news_incident_labels.csv) with stratum weights for unbiased estimates."""
+    p = REF_DIR / "labels" / "news_incident_labels.csv"
+    if not p.exists():
+        return pd.DataFrame(columns=["label_incident", "w"])
+    g = pd.read_csv(p, encoding="utf-8-sig")
+    n = g.groupby("stratum")["doc_id"].transform("size")
+    g["w"] = g["stratum_size"] / n
+    return g.drop_duplicates("doc_id").set_index("doc_id")[["label_incident", "w"]]
+
+
+def _wmetrics(pred: np.ndarray, y: np.ndarray, w: np.ndarray, blocked: np.ndarray) -> dict:
+    """Population-weighted precision, recall and F1 (the sample was stratified, so each label carries its stratum weight)."""
+    pred = pred & ~blocked
+    tp = float((w * (pred & (y == 1))).sum())
+    P = tp / max(float((w * pred).sum()), 1e-9)
+    R = tp / max(float((w * (y == 1)).sum()), 1e-9)
+    return {"precision": round(P, 3), "recall": round(R, 3), "f1": round(2 * P * R / (P + R), 3) if P + R else 0.0}
+
+
+def _embed_stories(d: pd.DataFrame, E: np.ndarray, hours: float = 24) -> dict:
+    """Conservative merges (a wrong merge hides an incident, a missed one only double-counts it):
+    same language: cosine >= 0.95, same category, within 24 h;
+    English-Tamil: cosine >= 0.90, same non-OTHER category, both incidents, same specific place (not just "Chennai"),
+    and casualty counts that do not disagree. Edges are applied strongest first and never grow a story past 6 articles."""
+    t = d["published_at"].astype("int64").to_numpy() / 3.6e12
+    order = np.argsort(t)
+    ts = t[order]
+    lang, cat, inc, sid = d["lang"].to_numpy(), d["category_code"].to_numpy(), d["is_incident"].to_numpy(), d["story_id"].to_numpy()
+    place, level, dead = d["place_text"].to_numpy(), d["geo_level"].to_numpy(), d["dead"].to_numpy()
+    edges = []
+    for s0 in range(0, len(order), 500):
+        blk = order[s0:s0 + 500]
+        lo = np.searchsorted(ts, t[blk].min() - hours)
+        hi = np.searchsorted(ts, t[blk].max() + hours, side="right")
+        win = order[lo:hi]
+        S = E[blk] @ E[win].T
+        for i, j in zip(*np.where(S >= 0.90)):
+            a, b = blk[i], win[j]
+            if a >= b or abs(t[a] - t[b]) > hours or sid[a] == sid[b]:
+                continue
+            ca, cb = cat[a], cat[b]
+            if lang[a] == lang[b]:
+                if S[i, j] >= 0.95 and ca == cb:
+                    edges.append((float(S[i, j]), a, b, "same"))
+            elif ({lang[a], lang[b]} == {"en", "ta"} and inc[a] and inc[b] and isinstance(ca, str) and ca == cb and ca != "OTHER"
+                  and level[a] != "district" and place[a] == place[b] and not (dead[a] and dead[b] and dead[a] != dead[b])):
+                edges.append((float(S[i, j]), a, b, "cross"))
+    uf = UnionFind(d["story_id"].tolist())
+    size = d.groupby("story_id").size().to_dict()
+    n = {"same": 0, "cross": 0}
+    for _, a, b, kind in sorted(edges, reverse=True):
+        ra, rb = uf.find(sid[a]), uf.find(sid[b])
+        if ra == rb or size.get(ra, 1) + size.get(rb, 1) > 6:
+            continue
+        r = uf.union(ra, rb)
+        size[r] = size.get(ra, 1) + size.get(rb, 1)
+        n[kind] += 1
+    d["story_id"] = d["story_id"].map(uf.find)
+    return {"same_language_merges": n["same"], "english_tamil_merges": n["cross"], "stories_after": int(d["story_id"].nunique())}
 
 
 def to_events(d: pd.DataFrame, ref: Reference, snap: str | None) -> pd.DataFrame:

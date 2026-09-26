@@ -77,6 +77,10 @@ llm:
 
 # Existing collectors and generators, run with their own command lines by
 # `python run_pipeline.py refresh`. Nothing here changes how they fetch.
+# Before each refresh the shared rain calendar (dintel/sync.py) rewrites the PWD
+# generator's --rainfall-csv input, so all synthetic sources keep the same rain days.
+# The hospital and PWD generators keep 180 days through their HISTORY_DAYS / WINDOW_DAYS
+# constants; police keeps 180 days through --days 180.
 refresh:
   - name: news
     every_minutes: 60
@@ -101,8 +105,13 @@ refresh:
   - name: pwd
     every_minutes: 1440
     cwd: pwd_dataset_generator
-    cmd: [python, generate_pwd_data.py]
+    cmd: [python, generate_pwd_data.py, --rainfall-csv, ../district_intel/output/state/pwd_rainfall.csv]
+  - name: grievance
+    every_minutes: 1440
+    cwd: chennai-grievance-portal-main
+    # CSV-only: reads real complaints from MySQL, never writes to it; {grievance_rain_days} comes from the shared calendar
+    cmd: [node, scripts/generate-synthetic-grievances.js, --days, "180", --seed, "42", --csv-only, --rain-days, "{grievance_rain_days}"]
   - name: police
     every_minutes: 1440
     cwd: police_dataset_generator
-    cmd: [npm.cmd, run, generate, "--", --refresh, --mode=csv]
+    cmd: [npm.cmd, run, generate, "--", --refresh, --days, "180", --seed, "42", --mode=csv]
