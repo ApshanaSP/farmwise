@@ -1,0 +1,108 @@
+# =============================================================================
+# District Intelligence data layer - configuration
+# Reads the outputs of the existing collectors and generators (never edits them)
+# and builds the curated, dashboard-ready store in output/.
+# Paths are relative to the repository root (the folder above district_intel/).
+# =============================================================================
+
+timezone: Asia/Kolkata
+
+sources:
+  grievances:
+    complaints: chennai-grievance-portal-main/data/datasets/grievances.csv
+    history: chennai-grievance-portal-main/data/datasets/grievance_status_history.csv
+    duplicate_truth: chennai-grievance-portal-main/data/datasets/_truth/duplicate_truth.csv
+    generation_meta: chennai-grievance-portal-main/data/datasets/generation_meta.json
+    deep_link: "http://localhost:3000/citizen/track-complaints?code={code}"
+  wards_geojson: chennai-grievance-portal-main/data/boundaries/gcc-wards.geojson
+  gcc_reference_dir: chennai-grievance-portal-main/data/gcc-reference
+  police:
+    reports: police_dataset_generator/output/police_incident_reports.csv
+    stations: police_dataset_generator/output/police_stations.csv
+    ground_truth: police_dataset_generator/output/ground_truth_events.csv
+    taluks_config: police_dataset_generator/config/taluks.json
+    events_config: police_dataset_generator/config/events.json
+  pwd:
+    dir: pwd_dataset_generator/data/pwd
+  hospital:
+    csv: chennai_hospital_data/chennai_hospital_health_data.csv
+  news:
+    master: chennai_news_pipeline/data/processed/master_news.csv
+    config: chennai_news_pipeline/config.yaml
+    package_dir: chennai_news_pipeline
+  imd:
+    dir: imd_weather_collector/data
+  cpcb:
+    dir: cpcb_air_quality_collector/data
+  cfm:
+    dir: cfm_dss_collector/data
+
+output:
+  dir: district_intel/output
+  sqlite: district_intel/output/district_intel.db
+
+pipeline:
+  # "auto" = the newest record time across sources (keeps a frozen snapshot stable).
+  # Use an ISO timestamp to pin it, or "now" for wall-clock time.
+  as_of: auto
+  snap_outside_points_m: 500        # points this close to a ward are snapped into it (flagged)
+  geo_review_threshold: 0.7         # geo confidence below this goes to the review queue
+  link_merge_threshold: 0.85
+  link_review_threshold: 0.40
+  baseline_days: 28                 # rolling window for expected counts
+  anomaly_p_value: 0.01
+  anomaly_min_count: 3
+  hotspot_eps_m: 250
+  hotspot_min_samples: 5
+
+overlay:
+  # Scenario overlay: adds clearly flagged synthetic records so that the separately
+  # generated sources describe one shared world (same rain days, same incidents seen
+  # from several sources) and writes the ground truth for cross-source linking.
+  # Real sources (news, IMD, CPCB, CFM) are never modified.
+  enabled: true
+  seed: 2026
+  rain_incidents_per_day: [4, 9]    # min, max planted flood incidents per world rain day
+  other_incidents: 70               # non-rain planted incidents across the window
+  news_anchored: 45                 # real news incidents that get departmental records
+
+llm:
+  # Optional. Every step has a deterministic fallback; LLM steps run only when enabled
+  # AND the API key variable is set. Cost stays bounded by the caps below.
+  enabled: false
+  provider: openai
+  model: gpt-4o-mini
+  api_key_env: OPENAI_API_KEY
+  max_calls_per_run: 200
+
+# Existing collectors and generators, run with their own command lines by
+# `python run_pipeline.py refresh`. Nothing here changes how they fetch.
+refresh:
+  - name: news
+    every_minutes: 60
+    cwd: chennai_news_pipeline
+    cmd: [python, run_pipeline.py, --no-db]
+  - name: imd
+    every_minutes: 60
+    cwd: imd_weather_collector
+    cmd: [python, imd_weather_collector.py, --backfill-days, "2"]
+  - name: cpcb
+    every_minutes: 60
+    cwd: cpcb_air_quality_collector
+    cmd: [python, cpcb_air_quality_collector.py]
+  - name: cfm
+    every_minutes: 180
+    cwd: cfm_dss_collector
+    cmd: [python, cfm_dss_collector.py, --backfill-days, "3"]
+  - name: hospital
+    every_minutes: 1440
+    cwd: chennai_hospital_data
+    cmd: [python, chennai_hospital_data_generator.py]
+  - name: pwd
+    every_minutes: 1440
+    cwd: pwd_dataset_generator
+    cmd: [python, generate_pwd_data.py]
+  - name: police
+    every_minutes: 1440
+    cwd: police_dataset_generator
+    cmd: [npm.cmd, run, generate, "--", --refresh, --mode=csv]

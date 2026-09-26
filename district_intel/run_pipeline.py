@@ -1,0 +1,112 @@
+#!/usr/bin/env python3
+"""District Intelligence data layer.
+
+  python run_pipeline.py build            build the curated store from current source outputs
+  python run_pipeline.py refresh          run the existing collectors/generators that are due, then build
+  python run_pipeline.py refresh --all    run all of them regardless of schedule
+  python run_pipeline.py watch --every 15 loop: refresh what is due every N minutes, rebuild when inputs change
+
+The existing collectors keep their own fetching methods; this only calls their
+command lines (see `refresh:` in config.yaml) and reads their output files.
+"""
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+
+from dintel.util import REPO_DIR, load_settings, log, setup_logging  # noqa: E402
+
+STATE = HERE / "output" / "state" / "refresh_state.json"
+
+
+def _state() -> dict:
+    try:
+        return json.loads(STATE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def _save_state(s: dict) -> None:
+    STATE.parent.mkdir(parents=True, exist_ok=True)
+    STATE.write_text(json.dumps(s, indent=2), encoding="utf-8")
+
+
+def refresh(settings, force: bool = False) -> list[str]:
+    st = _state()
+    ran = []
+    now = time.time()
+    for job in settings.raw.get("refresh", []):
+        last = st.get(job["name"], {}).get("last_run", 0)
+        if not force and now - last < job["every_minutes"] * 60:
+            continue
+        cwd = REPO_DIR / job["cwd"]
+        log.info("refresh %s: %s (in %s)", job["name"], " ".join(job["cmd"]), cwd)
+        try:
+            p = subprocess.run(job["cmd"], cwd=cwd, capture_output=True, text=True, timeout=3600,
+                               encoding="utf-8", errors="replace")
+            ok = p.returncode == 0
+            tail = (p.stdout or "")[-400:] + (p.stderr or "")[-400:]
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            ok, tail = False, str(exc)
+        st[job["name"]] = {"last_run": now, "ok": ok, "tail": tail[-800:]}
+        log.info("refresh %s: %s", job["name"], "ok" if ok else "FAILED (see output/state/refresh_state.json)")
+        ran.append(job["name"])
+    _save_state(st)
+    return ran
+
+
+def _inputs_fingerprint(settings) -> str:
+    h = hashlib.sha1()
+    for p in sorted(REPO_DIR.glob("*/**/*.csv")):
+        if "district_intel" in p.parts or "node_modules" in p.parts:
+            continue
+        s = p.stat()
+        h.update(f"{p}|{s.st_size}|{s.st_mtime_ns}".encode())
+    return h.hexdigest()
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("command", choices=["build", "refresh", "watch"])
+    ap.add_argument("--all", action="store_true", help="refresh every source regardless of schedule")
+    ap.add_argument("--every", type=int, default=15, help="watch interval in minutes")
+    ap.add_argument("--config", default=None)
+    ap.add_argument("--no-overlay", action="store_true", help="skip the scenario overlay")
+    ap.add_argument("-v", "--verbose", action="store_true")
+    args = ap.parse_args()
+    setup_logging(args.verbose)
+    settings = load_settings(args.config)
+    if args.no_overlay:
+        settings.raw["overlay"]["enabled"] = False
+    from dintel.pipeline import build
+
+    if args.command == "build":
+        m = build(settings)
+        print(json.dumps({k: m[k] for k in ("as_of", "runtime_s", "dedup", "geo_holdout", "flood_day_correlation_before_overlay",
+                                             "flood_day_correlation_after_overlay") if k in m}, indent=2, default=str))
+    elif args.command == "refresh":
+        refresh(settings, force=args.all)
+        build(settings)
+    else:
+        last = None
+        while True:
+            refresh(settings)
+            fp = _inputs_fingerprint(settings)
+            if fp != last:
+                build(settings)
+                last = fp
+            else:
+                log.info("no input changed; next check in %d min", args.every)
+            time.sleep(args.every * 60)
+
+
+if __name__ == "__main__":
+    main()
