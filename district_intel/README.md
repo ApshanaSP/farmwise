@@ -12,7 +12,8 @@ REST, Playwright, generators). This layer reads their output files, and
 cd district_intel
 pip install -r requirements.txt
 python run_pipeline.py build              # about 3.5 minutes on a laptop CPU
-python -m pytest -q tests                 # 18 fast tests
+python -m pytest -q tests                 # 24 fast tests
+python run_pipeline.py mysql              # copy the last build into MySQL (about 1.5 minutes)
 python run_pipeline.py refresh            # run the sources that are due; rebuild only if a file changed
 python run_pipeline.py refresh --all --only news,imd --no-build   # force some sources, skip the build
 python run_pipeline.py watch --every 15   # keep refreshing and rebuilding
@@ -38,7 +39,7 @@ changed from 90 to 180 on 27 Sep 2026).
 
 | Path | What |
 |---|---|
-| `district_intel.db` | SQLite store: 32 tables and 6 views (below). The dashboard can read it directly. |
+| `district_intel.db` | SQLite store: 32 tables and 6 views (below). The dashboard can read it directly, or read the MySQL copy (below). |
 | `curated/*.csv` | The same tables as CSV (UTF-8 with BOM so Excel shows Tamil). |
 | `dashboard/*.json` | Feeds shaped for the dashboard tiles: `incidents.json`, `incident_details.json`, `kpis.json`, `alerts.json`, `briefings.json`, `environment.json`, `hotspots.json`, `gaps.json`, `trends.json`, `source_health.json`, `wards.geojson`, `zone_outlines.geojson`, `meta.json`. |
 | `reports/evaluation.md` | Measured accuracy of every AI step. |
@@ -65,6 +66,27 @@ changed from 90 to 180 on 27 Sep 2026).
 Views: `v_open_incidents_live` (deadline re-checked against the wall clock),
 `v_collector_queue`, `v_zone_summary`, `v_taluk_unresolved`, `v_media_gaps`,
 `v_department_performance`.
+
+## MySQL copy for the dashboard
+
+`python run_pipeline.py mysql` (or `build --mysql`, or `mysql.export_after_build: true`
+in `config.yaml`) copies the SQLite store into two databases on the local MySQL server:
+
+| Database | Owner | On each export |
+|---|---|---|
+| `district_intel` | pipeline | All 31 tables replaced (about 370,000 rows). They load into `*__new` tables and swap in with one atomic `RENAME TABLE`, so readers never see a half-loaded store. |
+| `district_intel_ops` | dashboard | Only missing tables are created. Nothing is dropped or truncated. Every pipeline briefing is added to `briefing_archive`. |
+
+- **Times** become `DATETIME` in IST wall-clock, like the grievance portal.
+- **Map shapes:** ward polygons are in `ref_wards.geometry` and zone outlines in `ref_zones.outline`, both JSON.
+- **`documents`** keeps 32 of its 78 columns.
+- **Left out:** `quarantine` and `category_drift`.
+- **Credentials** come from `DI_MYSQL_*` environment variables, otherwise from the portal's `.env`.
+- **Checks:** each export compares row counts and per-column non-null counts with SQLite and writes `reports/mysql_export.json`. The command exits with code 1 on any mismatch.
+
+The ops tables (`collector_decisions`, `action_updates`, `review_decisions`,
+`workspaces`, `briefing_archive`, `audit_log`) are ready for the dashboard to write to.
+The pipeline does not apply them to builds yet.
 
 ## Pipeline
 

@@ -41,6 +41,15 @@ output:
   dir: district_intel/output
   sqlite: district_intel/output/district_intel.db
 
+mysql:
+  # `python run_pipeline.py mysql` copies the SQLite store into MySQL (see dintel/mysql_export.py).
+  # Credentials: DI_MYSQL_HOST / DI_MYSQL_PORT / DI_MYSQL_USER / DI_MYSQL_PASSWORD environment
+  # variables, otherwise DB_HOST / DB_PORT / DB_USER / DB_PASSWORD from env_file (the portal's .env).
+  env_file: chennai-grievance-portal-main/.env
+  database: district_intel            # replaced on every export
+  ops_database: district_intel_ops    # the dashboard's own tables; only created if missing, never overwritten
+  export_after_build: true            # every build (including the scheduled refresh) also exports; a failed export retries next run
+
 pipeline:
   # "auto" = the newest record time across sources (keeps a frozen snapshot stable).
   # Use an ISO timestamp to pin it, or "now" for wall-clock time.

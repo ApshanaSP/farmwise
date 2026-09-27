@@ -5,6 +5,7 @@
   python run_pipeline.py refresh          run the existing collectors/generators that are due, then build
   python run_pipeline.py refresh --all    run all of them regardless of schedule
   python run_pipeline.py watch --every 15 loop: refresh what is due every N minutes, rebuild when inputs change
+  python run_pipeline.py mysql            copy the last build into MySQL (databases district_intel and district_intel_ops)
 
 The existing collectors keep their own fetching methods; this only calls their
 command lines (see `refresh:` in config.yaml) and reads their output files.
@@ -79,24 +80,62 @@ def _inputs_fingerprint(settings) -> str:
     return h.hexdigest()
 
 
+def _mysql(settings) -> dict:
+    from dintel.mysql_export import export
+
+    return export(settings)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", choices=["build", "refresh", "watch"])
+    ap.add_argument("command", choices=["build", "refresh", "watch", "mysql"])
     ap.add_argument("--all", action="store_true", help="refresh every source regardless of schedule")
     ap.add_argument("--every", type=int, default=15, help="watch interval in minutes")
     ap.add_argument("--config", default=None)
     ap.add_argument("--no-overlay", action="store_true", help="skip the scenario overlay")
     ap.add_argument("--only", default="", help="refresh only these sources, comma-separated (e.g. news,imd)")
     ap.add_argument("--no-build", action="store_true", help="refresh without rebuilding")
+    ap.add_argument("--mysql", action="store_true", help="export to MySQL after each build (or set mysql.export_after_build)")
     ap.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args()
     setup_logging(args.verbose)
     settings = load_settings(args.config)
     if args.no_overlay:
         settings.raw["overlay"]["enabled"] = False
-    from dintel.pipeline import build
+    from dintel.pipeline import build as _build
 
-    if args.command == "build":
+    export_mysql = args.mysql or settings.raw.get("mysql", {}).get("export_after_build", False)
+
+    def sync_mysql(s) -> None:
+        """Export when the SQLite store is newer than the last export. Failures are logged and
+        retried on the next run, so a stopped MySQL server never blocks the build."""
+        if not export_mysql:
+            return
+        db = s.path(s.raw["output"]["sqlite"])
+        st = _state()
+        if not db.exists() or st.get("_mysql_exported_mtime") == db.stat().st_mtime:
+            return
+        try:
+            rep = _mysql(s)
+        except Exception as exc:  # noqa: BLE001
+            log.error("mysql export failed (will retry on the next run): %s", exc)
+            return
+        if not rep["mismatches"]:
+            st = _state()
+            st["_mysql_exported_mtime"] = db.stat().st_mtime
+            _save_state(st)
+
+    def build(s):
+        m = _build(s)
+        sync_mysql(s)
+        return m
+
+    if args.command == "mysql":
+        rep = _mysql(settings)
+        print(json.dumps({k: rep[k] for k in ("database", "ops_database", "tables", "rows", "documents_columns",
+                                              "ops_tables_created", "briefings_archived", "mismatches", "runtime_s")}, indent=2))
+        sys.exit(1 if rep["mismatches"] else 0)
+    elif args.command == "build":
         m = build(settings)
         st = _state()
         st["_last_build_fingerprint"] = _inputs_fingerprint(settings)
@@ -116,6 +155,7 @@ def main() -> None:
             _save_state(st)
         else:
             log.info("no source file changed since the last build; skipping the rebuild")
+            sync_mysql(settings)
     else:
         last = None
         while True:

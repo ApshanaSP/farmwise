@@ -54,7 +54,9 @@ def _sqlable(df: pd.DataFrame) -> pd.DataFrame:
             out[c] = s.map(iso)
         elif s.dtype == object:
             out[c] = s.map(lambda v: json.dumps(v, ensure_ascii=False, default=str) if isinstance(v, (list, dict, set, tuple))
-                           else (iso(v) if isinstance(v, pd.Timestamp) else v))
+                           else iso(v) if isinstance(v, pd.Timestamp)
+                           # numpy scalars in object columns: sqlite3 would store np.int64 as an 8-byte BLOB
+                           else v.item() if isinstance(v, np.generic) else v)
         elif str(s.dtype) in ("Int64", "Float64", "boolean"):
             out[c] = s.astype(object).where(s.notna(), None)
     return out
