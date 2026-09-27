@@ -3,7 +3,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import type { IncidentDetail, Overview as OverviewData } from "@/lib/collector/intel";
 import { I } from "./icons";
-import { Actions, Evidence, Timeline } from "./Department";
+import { Actions, Evidence, Timeline } from "./Detail";
 import { NewsItem } from "./Overview";
 import { Empty, SEVS, SevChip, StChip, deptIcon, fmtShort, fullTitle, rel, shortDept, type Row } from "./lib";
 import type { Console, ListPreset } from "./CollectorApp";
@@ -77,7 +77,7 @@ export function Drawer({ id, mode, c }: { id: string; mode?: "news"; c: Console 
         </div>
         <div className="drawer-f">
           <button className="btn plain" onClick={() => c.openInc(i.id)}><I n="doc" />Full incident record</button>
-          {i.dept && <button className="btn plain" onClick={() => c.openInDept(i)}><I n={deptIcon(i.dept)} />Open in {shortDept(i.dept)}</button>}
+          {i.dept && <button className="btn plain" onClick={() => c.filterDept(i)}><I n={deptIcon(i.dept)} />Show {shortDept(i.dept)} only</button>}
         </div>
       </aside>
     );
@@ -154,7 +154,7 @@ export function Drawer({ id, mode, c }: { id: string; mode?: "news"; c: Console 
           <button className="btn plain" onClick={() => c.decide([i], "reopen")}><I n="refresh" />Reopen</button>
         )}
         <button className="btn plain" onClick={() => setAsk("note")}><I n="chat" />Note</button>
-        {i.dept && <button className="btn plain" onClick={() => c.openInDept(i)}><I n={deptIcon(i.dept)} />Open in {shortDept(i.dept)}</button>}
+        {i.dept && <button className="btn plain" onClick={() => c.filterDept(i)}><I n={deptIcon(i.dept)} />Show {shortDept(i.dept)} only</button>}
       </div>
     </aside>
   );
@@ -179,7 +179,7 @@ const STATUS_OPTS: [string, string][] = [
 ];
 
 export function ListBody({ preset, c }: { preset: ListPreset; c: Console }) {
-  const [f, setF] = useState({ dept: c.view !== "overview" ? c.view : "", sev: "", status: "", q: "", sort: "t", dir: -1, page: 0, scope: "period", ...preset });
+  const [f, setF] = useState({ dept: c.dept ?? "", sev: "", status: "", q: "", sort: "t", dir: -1, page: 0, scope: "period", ...preset });
   const [data, setData] = useState<{ rows: Row[]; total: number; complaints: number } | null>(null);
   const [text, setText] = useState(f.q);
   useEffect(() => {
@@ -278,7 +278,7 @@ export function DeptsBody({ c }: { c: Console }) {
         <thead><tr><th>Department</th><th>Open incidents</th><th>Awaiting verification</th><th>Severe</th><th>Head</th></tr></thead>
         <tbody>
           {c.depts.map((d) => (
-            <tr key={d.code} onClick={() => c.go(d.code)}>
+            <tr key={d.code} onClick={() => c.setDept(d.code)}>
               <td className="ev">{d.name}</td><td className="num">{d.open}</td><td className="num">{d.unverified}</td>
               <td className="num" style={{ color: "var(--sev)" }}>{d.severe}</td><td className="dim">{d.head}</td>
             </tr>
@@ -345,9 +345,9 @@ export function ExportBody({ c }: { c: Console }) {
   useEffect(() => {
     const p = new URLSearchParams({ period: c.period });
     if (c.zone) p.set("zone", String(c.zone));
-    if (c.view !== "overview") p.set("dept", c.view);
+    if (c.dept) p.set("dept", c.dept);
     fetch(`/api/collector/export?${p}`).then((r) => r.json()).then(setData);
-  }, [c.period, c.zone, c.view]);
+  }, [c.period, c.zone, c.dept]);
   if (!data) return <div className="empty">Preparing the export…</div>;
   const download = () => {
     const url = URL.createObjectURL(new Blob(["﻿" + data.csv], { type: "text/csv;charset=utf-8" }));
@@ -359,7 +359,7 @@ export function ExportBody({ c }: { c: Console }) {
   };
   return (
     <>
-      <p style={{ marginTop: 0, color: "var(--text-2)" }}>{data.count.toLocaleString("en-IN")} incidents · {c.periodLabel}, {c.zoneName ?? "District-wide"}{c.view !== "overview" ? ` · ${c.view}` : ""}.</p>
+      <p style={{ marginTop: 0, color: "var(--text-2)" }}>{data.count.toLocaleString("en-IN")} incidents · {c.periodLabel}, {c.zoneName ?? "District-wide"}{c.deptName ? ` · ${c.deptName}` : ""}.</p>
       <textarea readOnly value={data.csv} style={{ width: "100%", height: 280, font: "12px var(--dic-mono),monospace", border: "1px solid var(--line)", borderRadius: 10, padding: 10, background: "var(--surface-2)" }} />
       <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
         <button className="btn" onClick={download}><I n="download" />Download CSV</button>
@@ -398,7 +398,7 @@ export function answer(text: string, d: OverviewData | null, c: Console): ReactN
   }
   if (/slow|department|dept/.test(t)) {
     const b = d.backlog;
-    return b ? (<><b>{b.name}</b> has the oldest open backlog{where}: {Math.round(b.hours / 24)} days per open incident on average ({b.n} open). <button onClick={() => c.go(b.code)}>Open {b.name} ›</button></>)
+    return b ? (<><b>{b.name}</b> has the oldest open backlog{where}: {Math.round(b.hours / 24)} days per open incident on average ({b.n} open). <button onClick={() => c.setDept(b.code)}>Open {b.name} ›</button></>)
       : "No department has enough open incidents to compare.";
   }
   const k = d.kpi.cur;

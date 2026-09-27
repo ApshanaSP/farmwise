@@ -25,7 +25,6 @@ export const PERIODS = {
 } as const;
 export type Period = keyof typeof PERIODS;
 export type Overview = Awaited<ReturnType<typeof overview>>;
-export type Department = NonNullable<Awaited<ReturnType<typeof department>>>;
 export type IncidentDetail = NonNullable<Awaited<ReturnType<typeof incident>>>;
 
 export function parsePeriod(v: unknown): Period {
@@ -144,16 +143,12 @@ function bucketSeries(rows: Row[], n: number, key: string): number[] {
   return out;
 }
 
-async function kpiBlock(s: Scope, now: string, kind: "overview" | "dept") {
+async function kpiBlock(s: Scope, now: string) {
   const p = PERIODS[s.period];
   const cur = scopeWhere(s, now);
   const prev = scopeWhere({ ...s, offset: 1 }, now);
-  const cols =
-    kind === "overview"
-      ? `SUM(i.severity_level = 'Severe') AS severe, SUM(CASE WHEN i.is_open = 1 THEN i.citizen_complaints ELSE 0 END) AS complaints,
-         SUM(i.is_open) AS ongoing, SUM(i.is_open = 0 AND i.status_std = 'Resolved') AS resolved`
-      : `SUM(i.is_open) AS open, SUM(i.is_open = 1 AND i.verified = 1) AS verified,
-         SUM(i.is_open = 1 AND i.severity_level = 'Severe') AS severe, SUM(i.is_open = 0 AND i.status_std = 'Resolved') AS resolved`;
+  const cols = `SUM(i.severity_level = 'Severe') AS severe, SUM(CASE WHEN i.is_open = 1 THEN i.citizen_complaints ELSE 0 END) AS complaints,
+    SUM(i.is_open) AS ongoing, SUM(i.is_open = 0 AND i.status_std = 'Resolved') AS resolved`;
   const bucketSecs = (p.hours * 3600) / p.buckets;
   const [c, pv, series] = await Promise.all([
     q(`SELECT ${cols} FROM incidents i WHERE ${cur.sql}`, cur.params),
@@ -173,30 +168,40 @@ async function kpiBlock(s: Scope, now: string, kind: "overview" | "dept") {
   };
 }
 
-export async function overview(period: Period, zone: number | null) {
+export async function overview(period: Period, zone: number | null, dept: string | null = null) {
   const now = await asOf();
-  const s: Scope = { period, zone };
+  const s: Scope = { period, zone, dept };
   const w = scopeWhere(s, now);
   const p = PERIODS[period];
+  // Zone shading and the zone table follow the department filter but cover every zone.
+  const all = scopeWhere({ period, zone: null, dept }, now);
+  // The department list follows zone and period, never the department filter itself.
+  const nd = scopeWhere({ period, zone }, now);
+  // Verification queue: open, not verified, from the last 14 days, no Collector decision yet.
+  const qWhere = `i.is_open = 1 AND i.verified = 0 AND i.first_reported_at > (? - INTERVAL 14 DAY)
+    ${zone ? "AND i.zone_no = ?" : ""} ${dept ? "AND i.lead_dept = ?" : ""} AND NOT ${DECIDED("'verify','reject','resolve'")}`;
+  const qParams = [now, ...(zone ? [zone] : []), ...(dept ? [dept] : [])];
 
-  const all = scopeWhere({ period, zone: null }, now);
   const [kpi, meta, zoneTable, pins, layerCounts, news, tasks, taskCount, recent, priority, byDept, byZone,
-    feeds, bell, deptNav, snap, backlog] = await Promise.all([
-    kpiBlock(s, now, "overview"),
+    feeds, bell, deptNav, snap, backlog, env] = await Promise.all([
+    kpiBlock(s, now),
     exportMeta(),
+    // Every zone, even with no incidents in this scope (the zone picker lists them all).
     q(
-      `SELECT i.zone_no AS zone, i.zone_name AS name, COUNT(*) AS n, SUM(i.is_open) AS open,
-              SUM(CASE WHEN i.is_open = 1 THEN i.citizen_complaints ELSE 0 END) AS complaints,
-              SUM(i.severity_level = 'Severe') AS severe
-       FROM incidents i WHERE ${all.sql} AND i.zone_no IS NOT NULL GROUP BY i.zone_no, i.zone_name ORDER BY i.zone_no`,
+      `SELECT z.zone_no AS zone, z.zone_name AS name, COUNT(i.incident_id) AS n, COALESCE(SUM(i.is_open), 0) AS open,
+              COALESCE(SUM(CASE WHEN i.is_open = 1 THEN i.citizen_complaints ELSE 0 END), 0) AS complaints,
+              COALESCE(SUM(i.severity_level = 'Severe'), 0) AS severe
+       FROM (SELECT DISTINCT zone_no, zone_name FROM ref_wards) z
+       LEFT JOIN incidents i ON i.zone_no = z.zone_no AND ${all.sql}
+       GROUP BY z.zone_no, z.zone_name ORDER BY z.zone_no`,
       all.params
     ),
     q(
       `SELECT i.incident_id AS id, i.lat, i.lon, i.severity_level AS sev, i.is_open AS open, i.citizen_complaints AS complaints,
               i.title, i.status_std AS status, DATE_FORMAT(i.first_reported_at, '%Y-%m-%d %H:%i:%s') AS t
        FROM incidents i WHERE ${w.sql} AND i.lat IS NOT NULL
-       ORDER BY i.is_open DESC, ${SEV_RANK}, i.citizen_complaints DESC, i.first_reported_at DESC LIMIT ?`,
-      [...w.params, zone ? 60 : 90]
+       ORDER BY i.is_open DESC, ${SEV_RANK}, i.citizen_complaints DESC, i.first_reported_at DESC LIMIT 150`,
+      w.params
     ),
     q(
       `SELECT SUM(i.severity_level = 'Severe') AS severe,
@@ -205,23 +210,9 @@ export async function overview(period: Period, zone: number | null) {
        FROM incidents i WHERE ${w.sql}`,
       w.params
     ),
-    q(
-      `SELECT ${ROW} ${FROM} WHERE ${w.sql} AND i.outlet_count > 0 ORDER BY i.first_reported_at DESC LIMIT 20`,
-      w.params
-    ),
-    q(
-      `SELECT ${ROW} ${FROM}
-       WHERE i.is_open = 1 AND i.verified = 0 AND i.first_reported_at > (? - INTERVAL 14 DAY)
-         ${zone ? "AND i.zone_no = ?" : ""} AND NOT ${DECIDED("'verify','reject','resolve'")}
-       ORDER BY ${SEV_RANK}, i.citizen_complaints DESC, i.first_reported_at DESC LIMIT 6`,
-      zone ? [now, zone] : [now]
-    ),
-    q(
-      `SELECT COUNT(*) AS n FROM incidents i
-       WHERE i.is_open = 1 AND i.verified = 0 AND i.first_reported_at > (? - INTERVAL 14 DAY)
-         ${zone ? "AND i.zone_no = ?" : ""} AND NOT ${DECIDED("'verify','reject','resolve'")}`,
-      zone ? [now, zone] : [now]
-    ),
+    q(`SELECT ${ROW} ${FROM} WHERE ${w.sql} AND i.outlet_count > 0 ORDER BY i.first_reported_at DESC LIMIT 20`, w.params),
+    q(`SELECT ${ROW} ${FROM} WHERE ${qWhere} ORDER BY ${SEV_RANK}, i.citizen_complaints DESC, i.first_reported_at DESC LIMIT 6`, qParams),
+    q(`SELECT COUNT(*) AS n FROM incidents i WHERE ${qWhere}`, qParams),
     q(
       `(SELECT ${ROW} ${FROM} WHERE ${w.sql} AND FIND_IN_SET('grievance', REPLACE(i.sources, '|', ',')) ORDER BY i.first_reported_at DESC LIMIT 8)
        UNION ALL
@@ -235,20 +226,26 @@ export async function overview(period: Period, zone: number | null) {
        ORDER BY ${SEV_RANK}, i.citizen_complaints DESC, i.first_reported_at DESC LIMIT ${zone ? 8 : 3}`,
       w.params
     ),
-    q(
-      `SELECT i.lead_dept AS code, dp.name, SUM(i.citizen_complaints) AS v ${FROM} WHERE ${w.sql}
-       GROUP BY i.lead_dept, dp.name HAVING v > 0 ORDER BY v DESC`,
-      w.params
-    ),
-    zone
+    dept
       ? q(
-          `SELECT i.place_text AS l, SUM(i.citizen_complaints) AS v FROM incidents i WHERE ${w.sql} AND i.is_open = 1
-           AND i.place_text IS NOT NULL GROUP BY i.place_text HAVING v > 0 ORDER BY v DESC LIMIT 5`,
+          `SELECT i.category_label AS l, COUNT(*) AS v FROM incidents i WHERE ${w.sql}
+           GROUP BY i.category_label ORDER BY v DESC`,
           w.params
         )
       : q(
-          `SELECT i.zone_no AS zone, i.zone_name AS l, SUM(i.citizen_complaints) AS v FROM incidents i WHERE ${w.sql}
-           AND i.is_open = 1 AND i.zone_no IS NOT NULL GROUP BY i.zone_no, i.zone_name HAVING v > 0 ORDER BY v DESC LIMIT 5`,
+          `SELECT i.lead_dept AS code, dp.name AS l, SUM(i.citizen_complaints) AS v ${FROM} WHERE ${w.sql}
+           GROUP BY i.lead_dept, dp.name HAVING v > 0 ORDER BY v DESC`,
+          w.params
+        ),
+    zone
+      ? q(
+          `SELECT i.place_text AS l, COUNT(*) AS n, SUM(i.citizen_complaints) AS v FROM incidents i WHERE ${w.sql} AND i.is_open = 1
+           AND i.place_text IS NOT NULL GROUP BY i.place_text ORDER BY v DESC, n DESC LIMIT 5`,
+          w.params
+        )
+      : q(
+          `SELECT i.zone_no AS zone, i.zone_name AS l, COUNT(*) AS n, SUM(i.citizen_complaints) AS v FROM incidents i WHERE ${w.sql}
+           AND i.is_open = 1 AND i.zone_no IS NOT NULL GROUP BY i.zone_no, i.zone_name ORDER BY v DESC, n DESC LIMIT 5`,
           w.params
         ),
     q(
@@ -265,20 +262,20 @@ export async function overview(period: Period, zone: number | null) {
       `SELECT i.lead_dept AS code, dp.name, dp.head, SUM(i.is_open) AS open, COUNT(*) AS n,
               SUM(i.severity_level = 'Severe') AS severe,
               SUM(i.is_open = 1 AND i.verified = 0 AND i.first_reported_at > (? - INTERVAL 14 DAY)) AS unverified
-       ${FROM} WHERE ${w.sql} GROUP BY i.lead_dept, dp.name, dp.head ORDER BY open DESC, n DESC`,
-      [now, ...w.params]
+       ${FROM} WHERE ${nd.sql} GROUP BY i.lead_dept, dp.name, dp.head ORDER BY open DESC, n DESC`,
+      [now, ...nd.params]
     ),
-    zone ? areaSnapshot(zone, s, now) : districtSnapshot(s, now),
+    dept ? deptSnapshot(dept, s, now) : zone ? areaSnapshot(zone, s, now) : districtSnapshot(s, now),
     q(
       `SELECT i.lead_dept AS code, dp.name, AVG(i.hours_open) AS h, COUNT(*) AS n ${FROM}
        WHERE i.is_open = 1 ${zone ? "AND i.zone_no = ?" : ""} GROUP BY i.lead_dept, dp.name HAVING n >= 5 ORDER BY h DESC LIMIT 1`,
       zone ? [zone] : []
-    )
+    ),
+    environment(period, now)
   ]);
 
-  // One list per Recent tab, de-duplicated client side.
-  const recentRows = await withDecisions(recent);
-  const [taskRows, newsRows, priorityRows, bellRows] = await Promise.all([
+  const [recentRows, taskRows, newsRows, priorityRows, bellRows] = await Promise.all([
+    withDecisions(recent),
     withDecisions(tasks),
     withDecisions(news),
     withDecisions(priority),
@@ -293,6 +290,7 @@ export async function overview(period: Period, zone: number | null) {
     now,
     period,
     zone,
+    dept,
     exportedAt: meta.exported_at ?? null,
     kpi,
     zoneTable: zoneTable.map((z) => ({ zone: z.zone, name: z.name, n: Number(z.n), open: Number(z.open),
@@ -316,9 +314,10 @@ export async function overview(period: Period, zone: number | null) {
     recent: recentRows,
     priority: priorityRows.map((r) => ({ ...r, timeline: timelines[r.id] ?? [] }) as Row),
     bottom: {
-      byDept: byDept.map((r) => ({ code: r.code, l: r.name ?? r.code, v: Number(r.v) })),
-      byZone: byZone.map((r) => ({ zone: r.zone ?? null, l: r.l, v: Number(r.v) })),
-      ...(await environment(period, now))
+      /** by department (no department filter) or by category (a department is selected) */
+      byDept: byDept.map((r) => ({ code: (r.code as string | undefined) ?? null, l: String(r.l ?? r.code ?? "Other"), v: Number(r.v) })),
+      byZone: byZone.map((r) => ({ zone: r.zone ?? null, l: r.l, v: Number(r.v), n: Number(r.n) })),
+      ...env
     },
     feeds,
     bell: bellRows,
@@ -327,6 +326,98 @@ export async function overview(period: Period, zone: number | null) {
     periodInfo: p
   };
 }
+
+/** Snapshot card when a department is selected: who runs it and where its load sits. */
+async function deptSnapshot(code: string, s: Scope, now: string) {
+  const w = scopeWhere(s, now);
+  const [info, k, topZone, offices] = await Promise.all([
+    q(`SELECT code, name, org, head, route FROM ref_departments WHERE code = ?`, [code]),
+    q(
+      `SELECT SUM(i.is_open) AS open, SUM(i.is_open = 1 AND i.verified = 1) AS verified,
+              SUM(i.severity_level = 'Severe') AS severe, SUM(i.sla_breached = 1 AND i.is_open = 1) AS overdue
+       FROM incidents i WHERE ${w.sql}`,
+      w.params
+    ),
+    q(
+      `SELECT i.zone_no AS zone, i.zone_name AS name, COUNT(*) AS n FROM incidents i
+       WHERE i.lead_dept = ? AND i.is_open = 1 AND i.zone_no IS NOT NULL ${s.zone ? "AND i.zone_no = ?" : ""}
+       GROUP BY i.zone_no, i.zone_name ORDER BY n DESC LIMIT 1`,
+      s.zone ? [code, s.zone] : [code]
+    ),
+    q(
+      `SELECT office_id, office_name, wing, officer_name, designation, phone, email FROM ref_offices WHERE dept_code = ?
+       ORDER BY FIELD(designation, 'Chief Engineer', 'Superintending Engineer', 'Executive Engineer', 'Assistant Executive Engineer'), office_name`,
+      [code]
+    )
+  ]);
+  return {
+    kind: "dept" as const,
+    dept: info[0] ?? { code, name: code, org: "", head: "", route: "" },
+    open: Number(k[0]?.open ?? 0),
+    verified: Number(k[0]?.verified ?? 0),
+    severe: Number(k[0]?.severe ?? 0),
+    overdue: Number(k[0]?.overdue ?? 0),
+    topZone: topZone[0] ?? null,
+    offices
+  };
+}
+
+/**
+ * Rain gauges, air-quality stations and lakes, each with its location, so the
+ * console can show readings for the selected zone (or the nearest station).
+ */
+async function environment(period: Period, now: string) {
+  const days = Math.max(7, Math.round(PERIODS[period].hours / 24));
+  const [rainDays, rain, aqi, lakes] = await Promise.all([
+    q(
+      `SELECT DATE_FORMAT(date, '%Y-%m-%d') AS d, rain_intensity AS v, rain_event AS ev FROM world_calendar
+       WHERE date > DATE(?) - INTERVAL ? DAY AND date <= DATE(?) ORDER BY date`,
+      [now, days * 2, now]
+    ),
+    q(
+      `SELECT place_id AS id, place_name AS name, zone_no AS zone, lat, lon,
+              DATE_FORMAT(observed_at, '%Y-%m-%d %H:%i:%s') AS t, value AS v
+       FROM observations WHERE metric = 'rainfall_24h_mm' ORDER BY observed_at`
+    ),
+    q(
+      `SELECT place_id AS id, place_name AS name, zone_no AS zone, lat, lon,
+              DATE_FORMAT(observed_at, '%Y-%m-%d %H:%i:%s') AS t, value AS v
+       FROM observations WHERE metric = 'aqi' AND observed_at > ? - INTERVAL 7 DAY ORDER BY observed_at`,
+      [now]
+    ),
+    q(
+      `SELECT place_id AS id, place_name AS name, zone_no AS zone, lat, lon,
+              DATE_FORMAT(observed_at, '%Y-%m-%d') AS t, value AS v
+       FROM observations WHERE metric = 'lake_pct_full' AND observed_at > ? - INTERVAL ? DAY ORDER BY observed_at`,
+      [now, days]
+    )
+  ]);
+  const group = (rows: Row[]) => {
+    const m = new Map<string, Row>();
+    for (const r of rows) {
+      const st = m.get(r.id) ?? { id: r.id, name: r.name, zone: r.zone ?? null, lat: Number(r.lat), lon: Number(r.lon), times: [], series: [] };
+      st.times.push(r.t);
+      st.series.push(Math.round(Number(r.v) * 10) / 10);
+      m.set(r.id, st);
+    }
+    return [...m.values()] as Station[];
+  };
+  const cur = rainDays.slice(-days);
+  const prev = rainDays.slice(0, Math.max(0, rainDays.length - days));
+  return {
+    rain: {
+      stations: group(rain),
+      days: cur.map((r) => r.d),
+      intensity: cur.map((r) => Number(r.v)),
+      rainDays: cur.filter((r) => Number(r.ev)).length,
+      prevRainDays: prev.filter((r) => Number(r.ev)).length
+    },
+    aqi: { stations: group(aqi) },
+    lakes: { stations: group(lakes) }
+  };
+}
+
+export interface Station { id: string; name: string; zone: number | null; lat: number; lon: number; times: string[]; series: number[] }
 
 async function districtSnapshot(s: Scope, now: string) {
   const w = scopeWhere(s, now);
@@ -405,149 +496,6 @@ async function timelinesFor(ids: string[]): Promise<Record<string, Row[]>> {
   const out: Record<string, Row[]> = {};
   for (const x of r) (out[x.id] ||= []).push(x);
   return out;
-}
-
-/** Rain, air quality and reservoir storage for the bottom cards. */
-async function environment(period: Period, now: string) {
-  const days = Math.max(7, Math.round(PERIODS[period].hours / 24));
-  const [rainDays, rainNow, aqi, lakes] = await Promise.all([
-    q(
-      `SELECT DATE_FORMAT(date, '%Y-%m-%d') AS d, rain_intensity AS v, rain_event AS ev FROM world_calendar
-       WHERE date > DATE(?) - INTERVAL ? DAY AND date <= DATE(?) ORDER BY date`,
-      [now, days * 2, now]
-    ),
-    q(
-      `SELECT place_name, DATE_FORMAT(observed_at, '%Y-%m-%d %H:%i:%s') AS t, value FROM observations
-       WHERE metric = 'rainfall_24h_mm' ORDER BY observed_at DESC, value DESC LIMIT 4`
-    ),
-    q(
-      `SELECT DATE_FORMAT(observed_at, '%Y-%m-%d %H:%i:%s') AS t, ROUND(AVG(value)) AS v, MAX(value) AS worst
-       FROM observations WHERE metric = 'aqi' GROUP BY observed_at ORDER BY observed_at DESC LIMIT 30`
-    ),
-    q(
-      `SELECT DATE_FORMAT(observed_at, '%Y-%m-%d') AS d, AVG(value) AS v, COUNT(DISTINCT place_id) AS n FROM observations
-       WHERE metric = 'lake_pct_full' AND observed_at > ? - INTERVAL ? DAY GROUP BY DATE(observed_at), d ORDER BY d`,
-      [now, days]
-    )
-  ]);
-  const cur = rainDays.slice(-days);
-  const prev = rainDays.slice(0, Math.max(0, rainDays.length - days));
-  const sum = (a: Row[]) => a.reduce((s, r) => s + Number(r.v), 0);
-  const latestMm = rainNow.length ? Math.max(...rainNow.map((r) => Number(r.value))) : null;
-  return {
-    rain: {
-      series: cur.map((r) => Number(r.v)),
-      days: cur.map((r) => r.d),
-      rainDays: cur.filter((r) => Number(r.ev)).length,
-      prevRainDays: prev.filter((r) => Number(r.ev)).length,
-      index: sum(cur),
-      prevIndex: sum(prev),
-      latestMm,
-      latestAt: rainNow[0]?.t ?? null
-    },
-    aqi: {
-      series: aqi.reverse().map((r) => Number(r.v)),
-      times: aqi.map((r) => r.t),
-      latest: aqi.length ? Number(aqi[aqi.length - 1].v) : null,
-      worst: aqi.length ? Number(aqi[aqi.length - 1].worst) : null
-    },
-    lakes: {
-      series: lakes.map((r) => Math.round(Number(r.v) * 10) / 10),
-      count: lakes.length ? Number(lakes[lakes.length - 1].n) : 0,
-      days: lakes.map((r) => r.d)
-    }
-  };
-}
-
-// ----------------------------------------------------------- department --
-
-export async function department(code: string, period: Period, zone: number | null) {
-  const now = await asOf();
-  const s: Scope = { period, zone, dept: code };
-  const w = scopeWhere(s, now);
-
-  const [info] = await q(`SELECT code, name, org, head, route FROM ref_departments WHERE code = ?`, [code]);
-  if (!info) return null;
-
-  const [kpi, sevCounts, pins, list, queue, queueCount, newsRows, offices, zoneOpen, trendRows, cats] = await Promise.all([
-    kpiBlock(s, now, "dept"),
-    q(`SELECT i.severity_level AS sev, COUNT(*) AS n FROM incidents i WHERE ${w.sql} GROUP BY i.severity_level`, w.params),
-    q(
-      `SELECT i.incident_id AS id, i.lat, i.lon, i.severity_level AS sev, i.is_open AS open, i.title, i.status_std AS status,
-              DATE_FORMAT(i.first_reported_at, '%Y-%m-%d %H:%i:%s') AS t
-       FROM incidents i WHERE ${w.sql} AND i.lat IS NOT NULL
-       ORDER BY i.is_open DESC, ${SEV_RANK}, i.first_reported_at DESC LIMIT 80`,
-      w.params
-    ),
-    q(`SELECT ${ROW} ${FROM} WHERE ${w.sql} ORDER BY i.is_open DESC, i.first_reported_at DESC LIMIT 400`, w.params),
-    q(
-      `SELECT ${ROW} ${FROM} WHERE i.lead_dept = ? AND i.is_open = 1 AND i.verified = 0
-         AND i.first_reported_at > (? - INTERVAL 14 DAY) ${zone ? "AND i.zone_no = ?" : ""}
-         AND NOT ${DECIDED("'verify','reject','resolve'")}
-       ORDER BY ${SEV_RANK}, i.citizen_complaints DESC, i.first_reported_at DESC LIMIT 6`,
-      zone ? [code, now, zone] : [code, now]
-    ),
-    q(
-      `SELECT COUNT(*) AS n FROM incidents i WHERE i.lead_dept = ? AND i.is_open = 1 AND i.verified = 0
-         AND i.first_reported_at > (? - INTERVAL 14 DAY) ${zone ? "AND i.zone_no = ?" : ""}
-         AND NOT ${DECIDED("'verify','reject','resolve'")}`,
-      zone ? [code, now, zone] : [code, now]
-    ),
-    q(
-      `SELECT ${ROW} ${FROM} WHERE ${w.sql} AND i.is_open = 1 ORDER BY ${SEV_RANK}, i.citizen_complaints DESC LIMIT 5`,
-      w.params
-    ),
-    q(
-      `SELECT office_id, office_name, wing, officer_name, designation, phone, email FROM ref_offices WHERE dept_code = ?
-       ORDER BY FIELD(designation, 'Chief Engineer', 'Superintending Engineer', 'Executive Engineer', 'Assistant Executive Engineer'), office_name`,
-      [code]
-    ),
-    q(
-      `SELECT w.zone_no AS zone, w.zone_name AS name, COALESCE(SUM(i.is_open), 0) AS open
-       FROM (SELECT DISTINCT zone_no, zone_name FROM ref_wards) w
-       LEFT JOIN incidents i ON i.zone_no = w.zone_no AND i.lead_dept = ? AND i.is_open = 1
-       GROUP BY w.zone_no, w.zone_name ORDER BY open DESC`,
-      [code]
-    ),
-    q(
-      `SELECT FLOOR(TIMESTAMPDIFF(HOUR, ? - INTERVAL 84 DAY, i.first_reported_at) / 168) AS wk, i.category_label AS type, COUNT(*) AS n
-       FROM incidents i WHERE i.lead_dept = ? AND i.first_reported_at > ? - INTERVAL 84 DAY AND i.first_reported_at <= ?
-       ${zone ? "AND i.zone_no = ?" : ""} GROUP BY wk, type`,
-      zone ? [now, code, now, now, zone] : [now, code, now, now]
-    ),
-    q(
-      `SELECT i.category_label AS type, COUNT(*) AS n FROM incidents i WHERE i.lead_dept = ?
-       AND i.first_reported_at > ? - INTERVAL 84 DAY GROUP BY type ORDER BY n DESC LIMIT 10`,
-      [code, now]
-    )
-  ]);
-
-  const weeks = Array.from({ length: 12 }, (_, k) => k);
-  const trend: Record<string, number[]> = { all: weeks.map(() => 0) };
-  for (const r of trendRows) {
-    const k = Number(r.wk);
-    if (k < 0 || k > 11) continue;
-    (trend[r.type] ||= weeks.map(() => 0))[k] += Number(r.n);
-    trend.all[k] += Number(r.n);
-  }
-
-  return {
-    now,
-    period,
-    zone,
-    dept: info,
-    kpi,
-    sevCounts: Object.fromEntries(sevCounts.map((r) => [r.sev, Number(r.n)])),
-    pins,
-    list: await withDecisions(list),
-    queue: { rows: await withDecisions(queue), count: Number(queueCount[0]?.n ?? 0) },
-    news: await withDecisions(newsRows),
-    offices,
-    zoneOpen: zoneOpen.map((z) => ({ ...z, open: Number(z.open) }) as Row),
-    trend,
-    trendTypes: cats.map((c) => c.type),
-    periodInfo: PERIODS[period]
-  };
 }
 
 // ------------------------------------------------------------- incident --

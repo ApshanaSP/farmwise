@@ -12,13 +12,13 @@ export interface MapShapes {
   /** lon/lat -> x/y: x = (lon - lon0) * kx, y = (lat0 - lat) * ky */
   proj: { lon0: number; lat0: number; kx: number; ky: number };
   wards: { ward: number; zone: number; d: string }[];
-  zones: { zone: number; name: string; x: number; y: number; d: string }[];
+  zones: { zone: number; name: string; x: number; y: number; d: string; box: [number, number, number, number] }[];
   sea: string;
 }
 
 declare global {
   // eslint-disable-next-line no-var
-  var __collectorShapes: MapShapes | undefined;
+  var __collectorShapesV2: MapShapes | undefined;
 }
 
 const W = 560;
@@ -37,7 +37,7 @@ function rings(geom: any): Ring[] {
 }
 
 export async function mapShapes(): Promise<MapShapes> {
-  if (global.__collectorShapes) return global.__collectorShapes;
+  if (global.__collectorShapesV2) return global.__collectorShapesV2;
 
   const [wardRows] = await intelPool.query<RowDataPacket[]>(
     `SELECT ward_no, zone_no, zone_name, centroid_lat, centroid_lon, geometry FROM ref_wards ORDER BY ward_no`
@@ -100,11 +100,16 @@ export async function mapShapes(): Promise<MapShapes> {
   const coast = east.map((x, b) => `${(x + 3).toFixed(1)},${((b / bands) * H).toFixed(1)}`);
   const sea = [...coast, `${W},${H}`, `${W},0`].join(" ");
 
-  const zoneMap = new Map<number, { name: string; xs: number[]; ys: number[] }>();
+  const zoneMap = new Map<number, { name: string; xs: number[]; ys: number[]; box: [number, number, number, number] }>();
   for (const w of wards) {
-    const z = zoneMap.get(w.zone_no) ?? { name: String(w.zone_name), xs: [] as number[], ys: [] as number[] };
+    const z = zoneMap.get(w.zone_no) ?? { name: String(w.zone_name), xs: [] as number[], ys: [] as number[],
+      box: [Infinity, Infinity, -Infinity, -Infinity] as [number, number, number, number] };
     z.xs.push(px(w.centroid_lon));
     z.ys.push(py(w.centroid_lat));
+    for (const r of rings(w.geometry))
+      for (const [lon, lat] of r) {
+        z.box = [Math.min(z.box[0], px(lon)), Math.min(z.box[1], py(lat)), Math.max(z.box[2], px(lon)), Math.max(z.box[3], py(lat))];
+      }
     zoneMap.set(w.zone_no, z);
   }
   const outlines = new Map(zoneRows.map((z) => [z.zone_no, parse(z.outline)]));
@@ -122,10 +127,11 @@ export async function mapShapes(): Promise<MapShapes> {
         name: z.name,
         x: Math.round(avg(z.xs)),
         y: Math.round(avg(z.ys)),
-        d: path(rings(outlines.get(zone)), false)
+        d: path(rings(outlines.get(zone)), false),
+        box: z.box.map((v) => Math.round(v)) as [number, number, number, number]
       })),
     sea
   };
-  global.__collectorShapes = shapes;
+  global.__collectorShapesV2 = shapes;
   return shapes;
 }

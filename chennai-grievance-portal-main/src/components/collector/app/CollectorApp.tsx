@@ -1,11 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import type { Department as DeptData, Overview as OverviewData, Period } from "@/lib/collector/intel";
+import type { Overview as OverviewData, Period } from "@/lib/collector/intel";
 import type { MapShapes } from "@/lib/collector/geo";
 import { I, type IconName } from "./icons";
 import Overview from "./Overview";
-import Department from "./Department";
 import { Ask, ContactBody, DeptsBody, Drawer, ExportBody, FeedsBody, ListBody, Modal, NewsAllBody, ZonesBody } from "./Overlays";
 import { deptIcon, fmtTime, fullTitle, rel, sevTone, shortDept, type Row } from "./lib";
 import { esc } from "./MapSvg";
@@ -24,7 +23,9 @@ interface Toast { id: number; msg: string; kind: "ok" | "alert"; act?: { label: 
 
 /** Everything the screens need from the shell: state, navigation and actions. */
 export interface Console {
-  view: string;
+  /** department filter (lead department code), null = all departments */
+  dept: string | null;
+  deptName: string | null;
   period: Period;
   periodLabel: string;
   zone: number | null;
@@ -38,25 +39,18 @@ export interface Console {
   setRtab: (t: "all" | "portal" | "news") => void;
   hist: string | null;
   setHist: (id: string) => void;
-  page: number;
-  setPage: (p: number) => void;
-  dsel: string | null;
-  setDsel: (id: string) => void;
-  qtab: "officers" | "queue" | "news";
-  setQtab: (t: "officers" | "queue" | "news") => void;
-  qsel: Set<string>;
-  toggleQsel: (id: string) => void;
-  trend: string;
-  setTrend: (t: string) => void;
+  /** station chosen in each environment card: "auto" (follow the zone), "all", or a station id */
+  envSel: Record<string, string>;
+  setEnvSel: (card: string, id: string) => void;
   busyIds: Set<string>;
   reloadKey: number;
   chat: { r: "q" | "a"; h: ReactNode }[];
   setChat: React.Dispatch<React.SetStateAction<{ r: "q" | "a"; h: ReactNode }[]>>;
   setAsk: (v: boolean) => void;
-  go: (view: string) => void;
+  setDept: (code: string | null) => void;
   setZone: (z: number | null) => void;
   openInc: (id: string, mode?: "news") => void;
-  openInDept: (i: Row) => void;
+  filterDept: (i: Row) => void;
   openList: (preset: ListPreset, title: string) => void;
   openNewsAll: () => void;
   openZones: () => void;
@@ -84,22 +78,17 @@ async function api(path: string, body?: unknown) {
 export default function CollectorApp({ initial, shapes, allDepts, user }: {
   initial: OverviewData; shapes: MapShapes; allDepts: { code: string; name: string; head: string | null }[]; user: string;
 }) {
-  const [view, setView] = useState("overview");
+  const [dept, setDeptState] = useState<string | null>(null);
   const [period, setPeriod] = useState<Period>("daily");
   const [zone, setZoneState] = useState<number | null>(null);
   const [ov, setOv] = useState<OverviewData>(initial);
-  const [dp, setDp] = useState<DeptData | null>(null);
   const [loading, setLoading] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const [anim, setAnim] = useState(true);
-  const [layers, setLayers] = useState<Record<string, boolean>>({ severe: true, complaint: true, other: true });
+  const [layers, setLayers] = useState<Record<string, boolean>>({ severe: true, complaint: true, other: true, stations: true });
   const [rtab, setRtab] = useState<"all" | "portal" | "news">("all");
   const [hist, setHist] = useState<string | null>(null);
-  const [page, setPage] = useState(0);
-  const [dsel, setDsel] = useState<string | null>(null);
-  const [qtab, setQtab] = useState<"officers" | "queue" | "news">("officers");
-  const [qsel, setQsel] = useState<Set<string>>(new Set());
-  const [trend, setTrend] = useState("all");
+  const [envSel, setEnvSelState] = useState<Record<string, string>>({ rain: "auto", aqi: "auto", lake: "auto" });
   const [drawer, setDrawer] = useState<{ id: string; mode?: "news" } | null>(null);
   const [modal, setModal] = useState<ModalState | null>(null);
   const [menu, setMenu] = useState<{ i: Row; top: number; left: number } | null>(null);
@@ -116,7 +105,6 @@ export default function CollectorApp({ initial, shapes, allDepts, user }: {
   const firstLoad = useRef(true);
   const lastExport = useRef(initial.exportedAt);
   const dirty = useRef(false);
-  const pendingSel = useRef<string | null>(null); // incident to select once a department page opens
 
   // ------------------------------------------------ fit-to-screen scaling --
   useLayoutEffect(() => {
@@ -132,25 +120,6 @@ export default function CollectorApp({ initial, shapes, allDepts, user }: {
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  // ------------------------------------------------------------ routing --
-  useEffect(() => {
-    const route = () => {
-      const h = window.location.hash.replace("#", "");
-      const v = h.startsWith("dept-") ? h.slice(5) : "overview";
-      setView((cur) => {
-        if (cur !== v) {
-          setAnim(true); setPage(0); setTrend("all"); setQsel(new Set()); setQtab("officers");
-          setDsel(pendingSel.current);
-          pendingSel.current = null;
-        }
-        return v;
-      });
-    };
-    route();
-    window.addEventListener("hashchange", route);
-    return () => window.removeEventListener("hashchange", route);
-  }, []);
-
   const toast = useCallback((msg: string, kind: "ok" | "alert" = "ok", act?: Toast["act"]) => {
     const id = Date.now() + Math.random();
     setToasts((t) => [...t, { id, msg, kind, act }]);
@@ -159,35 +128,24 @@ export default function CollectorApp({ initial, shapes, allDepts, user }: {
 
   // --------------------------------------------------------------- data --
   useEffect(() => {
-    if (firstLoad.current && period === "daily" && zone === null && reloadKey === 0) {
+    if (firstLoad.current && period === "daily" && zone === null && dept === null && reloadKey === 0) {
       firstLoad.current = false;
       return;
     }
     let live = true;
     setLoading(true);
-    api(`/api/collector/overview?period=${period}${zone ? `&zone=${zone}` : ""}`)
+    api(`/api/collector/overview?period=${period}${zone ? `&zone=${zone}` : ""}${dept ? `&dept=${encodeURIComponent(dept)}` : ""}`)
       .then((j) => live && setOv(j))
       .catch((e) => live && toast(e.message, "alert"))
       .finally(() => live && setLoading(false));
     return () => { live = false; };
-  }, [period, zone, reloadKey, toast]);
-
-  useEffect(() => {
-    if (view === "overview") return;
-    let live = true;
-    setLoading(true);
-    api(`/api/collector/department?code=${encodeURIComponent(view)}&period=${period}${zone ? `&zone=${zone}` : ""}`)
-      .then((j) => live && setDp(j))
-      .catch((e) => live && (toast(e.message, "alert"), setDp(null)))
-      .finally(() => live && setLoading(false));
-    return () => { live = false; };
-  }, [view, period, zone, reloadKey, toast]);
+  }, [period, zone, dept, reloadKey, toast]);
 
   useEffect(() => {
     if (!anim) return;
     const t = setTimeout(() => setAnim(false), 1200);
     return () => clearTimeout(t);
-  }, [anim, view, ov, dp]);
+  }, [anim, ov]);
 
   // New data from the pipeline: check every minute, refresh when nothing is open.
   const busy = () => !!(drawer || modal || (document.activeElement && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)));
@@ -213,15 +171,19 @@ export default function CollectorApp({ initial, shapes, allDepts, user }: {
     setModal(null);
     if (dirty.current) { dirty.current = false; setReloadKey((k) => k + 1); }
   }, []);
-  const go = (v: string) => {
+  const setDept = (code: string | null) => {
     closeAll();
     setNavOpen(false);
-    window.location.hash = v === "overview" ? "overview" : `dept-${v}`;
+    setDeptState(code);
+    setHist(null);
+    setAnim(true);
+    const name = code ? allDepts.find((d) => d.code === code)?.name : null;
+    if (name) toast(`Showing ${name} only. All panels filtered.`);
   };
   const setZone = (z: number | null) => {
     setZoneState(z);
     setHist(null);
-    setPage(0);
+    setEnvSelState({ rain: "auto", aqi: "auto", lake: "auto" });
     setAnim(true);
     closeAll();
     const name = z ? ov.zoneTable.find((x) => x.zone === z)?.name : null;
@@ -236,6 +198,8 @@ export default function CollectorApp({ initial, shapes, allDepts, user }: {
   }, [ov.deptNav, allDepts]);
 
   const zoneName = zone ? ov.zoneTable.find((z) => z.zone === zone)?.name ?? `Zone ${zone}` : null;
+  const deptName = dept ? allDepts.find((d) => d.code === dept)?.name ?? dept : null;
+  const scopeName = [zoneName, deptName].filter(Boolean).join(" · ") || "District-wide";
 
   // ------------------------------------------------------------ actions --
   const withBusy = async <T,>(ids: string[], fn: () => Promise<T>): Promise<T> => {
@@ -258,7 +222,6 @@ export default function CollectorApp({ initial, shapes, allDepts, user }: {
         note: "Note added to the incident history."
       };
       toast(msg[decision] ?? "Saved.");
-      setQsel((s) => { const n = new Set(s); ids.forEach((x) => n.delete(x)); return n; });
       setReloadKey((k) => k + 1);
       return true;
     } catch (e: any) {
@@ -296,20 +259,16 @@ export default function CollectorApp({ initial, shapes, allDepts, user }: {
   };
 
   const c: Console = {
-    view, period, periodLabel: ov.periodInfo.label, zone, zoneName, now: ov.now, zoom: fit.on ? fit.z : 1, depts,
+    dept, deptName, period, periodLabel: ov.periodInfo.label, zone, zoneName, now: ov.now, zoom: fit.on ? fit.z : 1, depts,
     layers, toggleLayer: (k) => setLayers((l) => ({ ...l, [k]: !l[k] })),
-    rtab, setRtab, hist, setHist, page, setPage, dsel, setDsel, qtab, setQtab, qsel,
-    toggleQsel: (id) => setQsel((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; }),
-    trend, setTrend, busyIds, reloadKey, chat, setChat, setAsk,
-    go, setZone,
+    rtab, setRtab, hist, setHist,
+    envSel, setEnvSel: (card, id) => setEnvSelState((m) => ({ ...m, [card]: id })),
+    busyIds, reloadKey, chat, setChat, setAsk,
+    setDept, setZone,
     openInc: (id, mode) => { setModal(null); setMenu(null); setDrawer({ id, mode }); },
-    openInDept: (i) => {
-      if (view === i.dept) { closeAll(); setDsel(i.id); return; }
-      pendingSel.current = i.id;
-      go(i.dept);
-    },
-    openList: (preset, title) => { setDrawer(null); setModal({ kind: "list", title: `${title} · ${zoneName ?? "District-wide"}`, preset }); },
-    openNewsAll: () => setModal({ kind: "news", title: `Today's Briefing · news · ${zoneName ?? "District-wide"}` }),
+    filterDept: (i) => setDept(i.dept),
+    openList: (preset, title) => { setDrawer(null); setModal({ kind: "list", title: `${title} · ${scopeName}`, preset }); },
+    openNewsAll: () => setModal({ kind: "news", title: `Today's Briefing · news · ${scopeName}` }),
     openZones: () => setModal({ kind: "zones", title: "Zones by open complaints" }),
     openDepts: () => setModal({ kind: "depts", title: "Departments" }),
     openFeeds: () => setModal({ kind: "feeds", title: "Data feeds" }),
@@ -379,15 +338,7 @@ export default function CollectorApp({ initial, shapes, allDepts, user }: {
             <div><b>Chennai District</b><small>Collector&apos;s Intelligence Console</small></div>
           </div>
           <nav className="nav" aria-label="Main">
-            <button className={`nav-i ${view === "overview" ? "on" : ""}`} onClick={() => go("overview")}><I n="home" />Overview</button>
-            <div className="nav-lbl">Departments</div>
-            {depts.slice(0, 8).map((d) => (
-              <button key={d.code} className={`nav-i ${view === d.code ? "on" : ""}`} onClick={() => go(d.code)} title={d.name}>
-                <I n={deptIcon(d.code)} /><span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.name}</span>
-                <span className="badge-s">{d.open}</span>
-              </button>
-            ))}
-            <button className="nav-i" onClick={() => c.openDepts()}><I n="layers" />All departments</button>
+            <button className="nav-i on" onClick={() => { setDept(null); setZone(null); }}><I n="home" />Overview</button>
           </nav>
           <div className="feeds">
             <b>Data feeds <span style={{ color: feedsOk === ov.feeds.length ? "#3FE39A" : "#F6C343" }}>{feedsOk}/{ov.feeds.length} healthy</span></b>
@@ -409,7 +360,7 @@ export default function CollectorApp({ initial, shapes, allDepts, user }: {
             <div className="seg" role="tablist" aria-label="Period">
               {PERIOD_KEYS.map((p) => (
                 <button key={p} role="tab" aria-selected={period === p} className={period === p ? "on" : ""}
-                  onClick={() => { setPeriod(p); setPage(0); setAnim(true); }}>{p[0].toUpperCase() + p.slice(1)}</button>
+                  onClick={() => { setPeriod(p); setAnim(true); }}>{p[0].toUpperCase() + p.slice(1)}</button>
               ))}
             </div>
             <Clock />
@@ -442,7 +393,7 @@ export default function CollectorApp({ initial, shapes, allDepts, user }: {
                     Signed in as {user}. Figures come from the district intelligence store, as of {fmtTime(ov.now)}.
                   </div>
                   <button className="pop-i" onClick={() => { setPop(null); setReloadKey((k) => k + 1); }}><I n="refresh" /><span><b>Reload data</b><small>Fetch the latest from the store</small></span></button>
-                  <button className="pop-i" onClick={() => { setPop(null); go("overview"); }}><I n="home" /><span><b>Go to overview</b></span></button>
+                  <button className="pop-i" onClick={() => { setPop(null); setDept(null); setZone(null); }}><I n="home" /><span><b>Clear all filters</b><small>Whole district, all departments</small></span></button>
                   <button className="pop-i" onClick={async () => { await fetch("/api/auth/logout", { method: "POST" }); window.location.href = "/login"; }}>
                     <I n="user" /><span><b>Sign out</b></span>
                   </button>
@@ -452,9 +403,7 @@ export default function CollectorApp({ initial, shapes, allDepts, user }: {
           </header>
 
           <div id="view" className={anim ? "anim" : ""}>
-            {view === "overview" ? <Overview d={ov} shapes={shapes} c={c} />
-              : dp && dp.dept.code === view ? <Department d={dp} shapes={shapes} c={c} />
-                : <div className="card" style={{ padding: 24 }}><div className="empty">{loading ? "Loading the department…" : "Department not found."}</div></div>}
+            <Overview d={ov} shapes={shapes} c={c} />
           </div>
         </div>
 
@@ -475,7 +424,7 @@ export default function CollectorApp({ initial, shapes, allDepts, user }: {
           <div className="menu" style={{ top: menu.top, left: menu.left }}>
             <button onClick={() => c.openInc(menu.i.id)}><I n="doc" />View details</button>
             <button onClick={() => { setMenu(null); decide([menu.i], "escalate"); }}><I n="esc" />Escalate</button>
-            <button onClick={() => { setMenu(null); c.openInDept(menu.i); }}><I n={deptIcon(menu.i.dept)} />Open in {shortDept(menu.i.dept)}</button>
+            {menu.i.dept !== dept && <button onClick={() => { setMenu(null); setDept(menu.i.dept); }}><I n={deptIcon(menu.i.dept)} />Show {shortDept(menu.i.dept)} only</button>}
             {menu.i.zone && <button onClick={() => { setMenu(null); setZone(menu.i.zone); }}><I n="pin" />Filter to {menu.i.zone_name}</button>}
             <button onClick={() => { setMenu(null); decide([menu.i], "reject", "Dismissed as duplicate"); }}><I n="x" />Dismiss as duplicate</button>
           </div>
@@ -532,7 +481,7 @@ function Search({ c, ov }: { c: Console; ov: OverviewData }) {
         if (!live) return;
         const out: Hit[] = [];
         r.zones.forEach((z: Row) => out.push({ g: "Zones", ic: "pin", l: z.name, s: `${z.open} open incidents`, run: () => c.setZone(z.zone) }));
-        r.depts.forEach((d: Row) => out.push({ g: "Departments", ic: deptIcon(d.code), l: d.name, s: d.org, run: () => c.go(d.code) }));
+        r.depts.forEach((d: Row) => out.push({ g: "Departments", ic: deptIcon(d.code), l: d.name, s: d.org, run: () => c.setDept(d.code) }));
         r.incidents.forEach((i: Row) => out.push({ g: "Incidents", ic: deptIcon(i.dept), l: fullTitle(i), s: `${i.zone_name ?? "Chennai"} · ${rel(i.t, ov.now)}`, run: () => c.openInc(i.id) }));
         setHits(out);
         setIdx(0);

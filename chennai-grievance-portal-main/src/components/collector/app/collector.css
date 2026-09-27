@@ -485,3 +485,10 @@
 .dic .hero h1{overflow:hidden;text-overflow:ellipsis}
 .dic:not(.fit) .dsel{flex-basis:100%;min-width:0}
 .dic:not(.fit) .dsel .sel{min-width:0;flex:1}
+.dic .map-tools button:disabled{opacity:.4;cursor:default}
+.dic .map-tools .zminus{display:block;width:12px;height:2px;border-radius:1px;background:currentColor}
+.dic .map-zoom-note{position:absolute;left:8px;top:8px;background:rgba(255,255,255,.94);border:1px solid var(--line);border-radius:8px;padding:3px 8px;font-size:11px;color:var(--text-2);pointer-events:none}
+.dic .env-lbl{display:flex;align-items:center;gap:4px;font-size:11px;color:var(--accent-2);font-weight:600;margin:-2px 0 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dic .env-lbl .ic{width:12px;height:12px;flex:none}
+.dic .bottom .env-top{margin-bottom:2px}
+.dic .bottom .big{font-size:22px}
