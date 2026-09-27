@@ -406,7 +406,7 @@ function BottomCards({ d, c, iv, tag }: { d: OverviewData; c: Console; iv: () =>
         </div>
       </article>
       <article className="card" style={iv()}>
-        <div className="ch"><I n="drop" /><h3>Reservoir Storage <span>· 18 lakes</span></h3></div>
+        <div className="ch"><I n="drop" /><h3>Reservoir Storage <span>· {lakes.count} lakes</span></h3></div>
         <div className="cb">
           <div className="env-top">
             <span className="big">{lNow != null ? <><Cnt v={lNow} dec={1} /> <small>% full</small></> : "—"}</span>

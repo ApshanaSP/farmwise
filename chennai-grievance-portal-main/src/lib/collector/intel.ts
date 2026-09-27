@@ -330,7 +330,7 @@ export async function overview(period: Period, zone: number | null) {
 
 async function districtSnapshot(s: Scope, now: string) {
   const w = scopeWhere(s, now);
-  const [top, depts, crit] = await Promise.all([
+  const [top, depts, crit, zones] = await Promise.all([
     q(
       `SELECT i.zone_no AS zone, i.zone_name AS name,
               SUM(CASE i.severity_level WHEN 'Severe' THEN 3 WHEN 'High' THEN 1 ELSE 0 END) AS score
@@ -342,11 +342,12 @@ async function districtSnapshot(s: Scope, now: string) {
     q(
       `SELECT COUNT(*) AS n FROM incidents i WHERE i.is_open = 1 AND i.severity_level = 'Severe'
        AND (i.verified = 0 OR i.awaiting_collector = 1) AND NOT ${DECIDED("'verify','reject','resolve'")}`
-    )
+    ),
+    q(`SELECT COUNT(DISTINCT zone_no) AS n FROM ref_wards`)
   ]);
   return {
     kind: "district" as const,
-    zones: 15,
+    zones: Number(zones[0]?.n ?? 0),
     topZones: top.map((t) => ({ zone: t.zone, name: t.name })),
     activeDepts: Number(depts[0]?.n ?? 0),
     critical: Number(crit[0]?.n ?? 0)
@@ -424,7 +425,7 @@ async function environment(period: Period, now: string) {
        FROM observations WHERE metric = 'aqi' GROUP BY observed_at ORDER BY observed_at DESC LIMIT 30`
     ),
     q(
-      `SELECT DATE_FORMAT(observed_at, '%Y-%m-%d') AS d, AVG(value) AS v FROM observations
+      `SELECT DATE_FORMAT(observed_at, '%Y-%m-%d') AS d, AVG(value) AS v, COUNT(DISTINCT place_id) AS n FROM observations
        WHERE metric = 'lake_pct_full' AND observed_at > ? - INTERVAL ? DAY GROUP BY DATE(observed_at), d ORDER BY d`,
       [now, days]
     )
@@ -452,6 +453,7 @@ async function environment(period: Period, now: string) {
     },
     lakes: {
       series: lakes.map((r) => Math.round(Number(r.v) * 10) / 10),
+      count: lakes.length ? Number(lakes[lakes.length - 1].n) : 0,
       days: lakes.map((r) => r.d)
     }
   };
