@@ -151,6 +151,7 @@ def main() -> None:
             return
         if fp != st.get("_last_build_fingerprint"):
             build(settings)
+            st = _state()  # re-read: the MySQL step records its own progress
             st["_last_build_fingerprint"] = fp
             _save_state(st)
         else:

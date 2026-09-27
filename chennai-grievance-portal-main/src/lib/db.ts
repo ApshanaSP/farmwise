@@ -10,7 +10,7 @@ declare global {
  * Managed hosts (Railway, Aiven, PlanetScale, ...) provide a URL, so accepting
  * both lets the same build run locally and in production.
  */
-function connectionSettings() {
+export function connectionSettings() {
   const url = process.env.DATABASE_URL || process.env.MYSQL_URL;
   if (url) {
     const u = new URL(url);
