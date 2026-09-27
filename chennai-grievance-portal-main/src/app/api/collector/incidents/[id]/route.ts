@@ -1,21 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getActiveSession } from "@/lib/auth";
-import { getIncident } from "@/lib/collector/queries";
+import { collectorSession, failed } from "@/lib/collector/guard";
+import { incident } from "@/lib/collector/intel";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
-  const session = await getActiveSession();
-  if (!session || session.role !== "collector") {
-    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-  }
+  const s = await collectorSession();
+  if (s instanceof NextResponse) return s;
   if (!/^[A-Za-z0-9_-]{1,64}$/.test(params.id)) {
     return NextResponse.json({ error: "Invalid incident id." }, { status: 400 });
   }
-
-  const detail = await getIncident(params.id);
-  if (!detail) {
-    return NextResponse.json({ error: "Incident not found." }, { status: 404 });
+  try {
+    const d = await incident(params.id);
+    return d ? NextResponse.json(d) : NextResponse.json({ error: "Incident not found." }, { status: 404 });
+  } catch (err) {
+    return failed(err, "the incident");
   }
-  return NextResponse.json(detail);
 }
