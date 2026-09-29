@@ -283,6 +283,12 @@ async function loadReference(conn) {
     if (!locsByArea.has(l.area_id)) locsByArea.set(l.area_id, []);
     locsByArea.get(l.area_id).push(l);
   }
+  const areaWardCount = new Map();
+  const areaPrimary = new Map();
+  for (const aw of areaWards) {
+    areaWardCount.set(aw.area_id, (areaWardCount.get(aw.area_id) || 0) + 1);
+    if (aw.is_primary === 1) areaPrimary.set(aw.area_id, aw.ward_number);
+  }
   const areasByWard = new Map();
   for (const aw of areaWards) {
     if (!locsByArea.has(aw.area_id)) continue;
@@ -302,6 +308,8 @@ async function loadReference(conn) {
     locsByArea,
     streetsByLoc,
     areasByWard,
+    areaWardCount,
+    areaPrimary,
     allStreets: streets,
     existingCodes: new Set(codes.map((c) => c.complaint_code))
   };
@@ -411,21 +419,45 @@ function generate(ref, opts) {
     ref.wards.map((w, i) => wardWeight[i] * (LOW_LYING.has(w.zone_name) ? LOW_LYING_RAIN_BOOST : 1))
   );
 
-  const areaSamplers = new Map();
-  function areaFor(ward) {
-    if (!areaSamplers.has(ward)) {
-      const list = ref.areasByWard.get(ward) || [];
-      areaSamplers.set(ward, list.length ? sampler(R, list.map((a) => a.areaId), list.map((a) => (a.primary ? 3 : 1))) : null);
-    }
-    const s = areaSamplers.get(ward);
-    return s ? s() : null;
-  }
-
   // ---- geometry -----------------------------------------------------------
   const polysByWard = new Map();
   for (const f of geo.loadWardFeatures()) {
     if (!polysByWard.has(f.wardNo)) polysByWard.set(f.wardNo, []);
     polysByWard.get(f.wardNo).push(f);
+  }
+  const wardCentre = new Map([...polysByWard.entries()].map(([w, ps]) => {
+    const b = ps.map((p) => p.bbox);
+    return [w, { lat: b.reduce((a, x) => a + (x[1] + x[3]) / 2, 0) / b.length, lng: b.reduce((a, x) => a + (x[0] + x[2]) / 2, 0) / b.length }];
+  }));
+  const wardKm = (a, b) => {
+    const p = wardCentre.get(a), q = wardCentre.get(b);
+    if (!p || !q) return Infinity;
+    return Math.hypot((p.lat - q.lat) * 111.2, (p.lng - q.lng) * 111.2 * Math.cos((p.lat * Math.PI) / 180));
+  };
+
+  // GCC "areas" range from one ward to old divisions of 20-49 wards (EGMORE spans 26), and an
+  // address ends with its area name. So a ward only uses an area that is plausibly its own: the
+  // area's primary ward, a small area (3 wards or fewer), or an area whose primary ward is within
+  // AREA_NEAR_KM. Otherwise the area whose primary ward is nearest. This keeps "Pantheon Road,
+  // Egmore" near Egmore instead of anywhere in the 26 wards GCC lists for EGMORE; with no area
+  // within 2.5 km the street is typed, with no area name.
+  const AREA_NEAR_KM = 1.2;
+  const areaSamplers = new Map();
+  function areaFor(ward) {
+    if (!areaSamplers.has(ward)) {
+      const list = ref.areasByWard.get(ward) || [];
+      const fits = (a) => a.primary || ref.areaWardCount.get(a.areaId) <= 3 || wardKm(ref.areaPrimary.get(a.areaId), ward) <= AREA_NEAR_KM;
+      let ok = list.filter(fits);
+      if (!ok.length && list.length) {
+        const d = (a) => wardKm(ref.areaPrimary.get(a.areaId), ward);
+        const near = list.reduce((m, a) => (d(a) < d(m) ? a : m));
+        // no area is close enough to name: the resident types the street instead
+        ok = d(near) <= 2.5 ? [near] : [];
+      }
+      areaSamplers.set(ward, ok.length ? sampler(R, ok.map((a) => a.areaId), ok.map((a) => (a.primary ? 3 : 1))) : null);
+    }
+    const s = areaSamplers.get(ward);
+    return s ? s() : null;
   }
   const accepts = (lat, lng, ward) => {
     if (!geo.pointInWard(lat, lng, ward)) return false;
@@ -491,10 +523,25 @@ function generate(ref, opts) {
     const cat = s.category;
     c.junk = false;
 
+    // Slot filler for the resident's own words (street, locality, counts, times).
+    const fill = (x) => x
+      .replace(/\{street\}/g, streetDisplay(c))
+      .replace(/\{locality\}/g, c.localityName ? titleCase(c.localityName) : { en: "our area", ta: "எங்கள் பகுதி", tanglish: "engal area" }[c.lang])
+      .replace(/\{house\}/g, String(R.int(1, 180)) + (R.chance(0.2) ? "/" + R.int(1, 12) : ""))
+      .replace(/\{n\}/g, String(R.int(4, 60)))
+      .replace(/\{k\}/g, String(R.int(2, 6)))
+      .replace(/\{m\}/g, String(R.int(3, 25)))
+      .replace(/\{len\}/g, String(R.int(3, 30) * 10))
+      .replace(/\{hour\}/g, String(R.int(6, 10)))
+      .replace(/\{days\}/g, String(R.int(3, 7)))
+      .replace(/\{day\}/g, R.pick(T.DAYS));
+
     if (cat === "Other") {
       const tpl = otherSampler();
       c.lang = tpl.lang;
       const parts = [tpl.text];
+      if (R.chance(0.4)) parts.unshift(fill(R.pick(T.OPENER[tpl.lang])));
+      if (R.chance(0.25)) parts.push(fill(R.pick(T.EXTENT[tpl.lang])));
       if (R.chance(0.1)) parts.push(R.pick(T.REPEAT[tpl.lang]));
       if (R.chance(0.6)) parts.push(R.pick(T.PLEA[tpl.lang]));
       c.details = truncate400(parts.join(" "));
@@ -536,8 +583,21 @@ function generate(ref, opts) {
     text = text.replace(/\s+/g, " ").replace(/\s+([.,;:])/g, "$1").replace(/\bon on\b/g, "on").trim();
     text = text[0].toUpperCase() + text.slice(1);
 
-    const parts = [text];
-    if (R.chance(0.45)) parts.push(R.pick(T.IMPACT[lang]));
+    // Who is writing, what exactly they see, when and how many are affected: each optional,
+    // so complaints about the same problem read like different residents wrote them.
+    // a light that burns in the daytime is not "off"
+    const details = ((T.DETAIL[key] && T.DETAIL[key][lang]) || []).filter((x) => !(/daytime/i.test(s.label) && /\boff\b|dark|eriyala|எரியவில்லை/i.test(x)));
+    const parts = [];
+    if (R.chance(0.35)) parts.push(fill(R.pick(T.OPENER[lang])));
+    parts.push(text);
+    if (details.length && R.chance(0.75)) {
+      const first = R.pick(details);
+      parts.push(fill(first));
+      if (details.length > 2 && R.chance(0.25)) parts.push(fill(R.pick(details.filter((x) => x !== first))));
+    }
+    if (R.chance(0.3)) parts.push(fill(R.pick(T.WHEN[lang])));
+    if (R.chance(0.3)) parts.push(fill(R.pick(T.EXTENT[lang])));
+    if (R.chance(0.35)) parts.push(R.pick(T.IMPACT[lang]));
     if (R.chance(0.15)) parts.push(R.pick(T.REPEAT[lang]));
     if (R.chance(0.55)) parts.push(R.pick(T.PLEA[lang]));
     c.details = truncate400(parts.join(" "));
@@ -1250,8 +1310,12 @@ async function main() {
     }, null, 2) + "\n", "utf8");
 
     if (OPTS.csvOnly) {
-      // Real rows are read (never written) so the files still hold everything.
-      const real = await fetchDataset(conn);
+      // Real rows are read (never written) so the files still hold everything. Synthetic rows
+      // stored by an earlier database-mode run are left out: this run's set replaces them, and
+      // exporting both put two overlapping synthetic histories into the files.
+      const all = await fetchDataset(conn);
+      const isReal = (r) => Number(r["Is Synthetic"]) === 0;
+      const real = { complaints: all.complaints.filter(isReal), history: all.history.filter(isReal) };
       const rows = [...real.complaints, ...gen.complaints.map(exportRow)]
         .sort((a, b) => (a["Filed On"] < b["Filed On"] ? -1 : a["Filed On"] > b["Filed On"] ? 1 : 0));
       intel.enrich(rows, { now: gen.now, rainDays: new Set(gen.rainDays) });

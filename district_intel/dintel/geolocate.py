@@ -124,8 +124,10 @@ def resolve(events: pd.DataFrame, wards: WardIndex, ward_taluk: dict[int, tuple[
 
     # 3. zone and taluk
     e["zone_no"] = e["ward_no"].map(lambda w: zone_of.get(int(w)) if pd.notna(w) and int(w) in zone_of else np.nan)
-    need_t = e["taluk_code"].isna() & e["ward_no"].notna()
-    e.loc[need_t, "taluk_code"] = e.loc[need_t, "ward_no"].map(lambda w: ward_taluk.get(int(w), (None, 0))[0])
+    # The ward decides the revenue taluk, so the map, the taluk filter and every list agree.
+    # A source's own taluk label (police station or PWD division) stays in taluk_src.
+    has_w = e["ward_no"].notna()
+    e.loc[has_w, "taluk_code"] = e.loc[has_w, "ward_no"].map(lambda w: ward_taluk.get(int(w), (None, 0))[0])
     e["ward_no"] = e["ward_no"].astype("Int64")
     e["zone_no"] = e["zone_no"].astype("Int64")
     log.info("geo: %d events located to a ward, %d snapped, %d outside the district, %d district-wide",

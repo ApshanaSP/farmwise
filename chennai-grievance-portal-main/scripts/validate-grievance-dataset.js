@@ -349,6 +349,9 @@ async function runValidation({ root = ROOT, conn = null, quiet = false } = {}) {
       let syn = 0;
       for (const j of bundle.complaints) {
         const r = csvByCode.get(j["Complaint No"]);
+        // A CSV-only run replaces synthetic rows stored in MySQL by an earlier database run,
+        // so only real rows must be present there.
+        if (!r && String(j["Is Synthetic"]) !== "0") continue;
         if (!r) {
           f.push(j["Complaint No"] + ": in export:data but missing from grievances.csv");
           continue;

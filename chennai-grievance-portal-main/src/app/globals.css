@@ -71,6 +71,19 @@
   .form-error {
     @apply mt-1.5 flex items-center gap-1.5 text-xs font-medium text-red-600;
   }
+  .auth-label {
+    @apply mb-1.5 block text-[13px] font-semibold text-ink-muted;
+  }
+  .auth-input {
+    @apply block h-12 w-full rounded-xl border border-canvas-border bg-canvas/60 px-4 text-[15px] text-ink transition duration-200 placeholder:text-ink-faint hover:border-navy-200 focus:border-navy-500 focus:bg-white focus:shadow-glow focus:outline-none;
+  }
+  select.auth-input {
+    @apply cursor-pointer appearance-none bg-[length:16px] bg-[right_0.875rem_center] bg-no-repeat pr-10;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%237A879E' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5.5 7.5l4.5 4.5 4.5-4.5'/%3E%3C/svg%3E");
+  }
+  .auth-submit {
+    @apply inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-navy-600 to-navy-500 text-base font-semibold text-white shadow-soft transition-all duration-200 ease-spring hover:-translate-y-0.5 hover:shadow-lift focus-visible:ring-4 focus-visible:ring-navy-600/20 disabled:pointer-events-none disabled:opacity-60;
+  }
   .input-affix {
     @apply pointer-events-none absolute inset-y-0 left-3.5 flex items-center text-ink-faint transition-colors;
   }
@@ -140,6 +153,26 @@
     opacity: 0.35;
     mix-blend-mode: overlay;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
+  }
+  .auth-bg {
+    background-color: #eef3fb;
+    background-image:
+      radial-gradient(60% 50% at 0% 0%, rgba(31, 107, 234, 0.12) 0px, transparent 70%),
+      radial-gradient(50% 45% at 100% 100%, rgba(200, 137, 27, 0.1) 0px, transparent 70%),
+      radial-gradient(circle at 1px 1px, rgba(11, 61, 145, 0.07) 1px, transparent 0);
+    background-size: auto, auto, 22px 22px;
+  }
+  .auth-hero {
+    background:
+      radial-gradient(90% 60% at 100% 0%, rgba(77, 141, 255, 0.45) 0%, transparent 60%),
+      linear-gradient(160deg, #0a2f78 0%, #0b3d91 45%, #061a3b 100%);
+  }
+  .auth-grid {
+    background-image: linear-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.06) 1px, transparent 1px);
+    background-size: 28px 28px;
+    mask-image: radial-gradient(80% 70% at 70% 30%, #000 20%, transparent 75%);
+    -webkit-mask-image: radial-gradient(80% 70% at 70% 30%, #000 20%, transparent 75%);
   }
   .dotted-canvas {
     background-image: radial-gradient(circle at 1px 1px, rgba(11, 61, 145, 0.07) 1px, transparent 0);

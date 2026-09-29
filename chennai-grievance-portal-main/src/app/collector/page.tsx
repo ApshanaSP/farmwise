@@ -3,10 +3,9 @@ import { redirect } from "next/navigation";
 import { getSessionFromCookies } from "@/lib/auth";
 import CollectorApp from "@/components/collector/app/CollectorApp";
 import { deptList, overview } from "@/lib/collector/intel";
-import { mapShapes } from "@/lib/collector/geo";
 
 export const dynamic = "force-dynamic";
-export const metadata: Metadata = { title: "Collector Console · Chennai District" };
+export const metadata: Metadata = { title: "Collector Console · District IQ" };
 
 // Loaded by the browser, as in the design: next/font would fetch at build time, which some
 // networks (TLS inspection) block. The CSS falls back to system fonts if this cannot load.
@@ -18,12 +17,12 @@ export default async function CollectorPage() {
   if (!session || session.role !== "collector") redirect("/login");
 
   try {
-    const [initial, shapes, depts] = await Promise.all([overview("daily", null), mapShapes(), deptList()]);
+    const [initial, depts] = await Promise.all([overview("daily", null), deptList()]);
     return (
       <>
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
         <link rel="stylesheet" href={FONTS} />
-        <CollectorApp initial={initial} shapes={shapes} allDepts={depts} user={session.email} />
+        <CollectorApp initial={initial} allDepts={depts} user={session.email} />
       </>
     );
   } catch (err: any) {

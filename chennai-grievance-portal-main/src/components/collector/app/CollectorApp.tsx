@@ -2,44 +2,73 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Overview as OverviewData, Period } from "@/lib/collector/intel";
-import type { MapShapes } from "@/lib/collector/geo";
+import type { Insights } from "@/lib/collector/insights";
+import type { MapGeo } from "@/lib/collector/geo";
+import Logo from "@/components/Logo";
 import { I, type IconName } from "./icons";
-import Overview from "./Overview";
-import { Ask, ContactBody, DeptsBody, Drawer, ExportBody, FeedsBody, ListBody, Modal, NewsAllBody, ZonesBody } from "./Overlays";
-import { deptIcon, fmtTime, fullTitle, rel, sevTone, shortDept, type Row } from "./lib";
-import { esc } from "./MapSvg";
+import { EnvPage, Page1 } from "./Overview";
+import { BriefingPage, TrendsPage, mdToHtml } from "./Insights";
+import { IncidentView } from "./Detail";
+import { Ask, ContactBody, DeptsBody, ExportBody, ListBody, Modal, NewsAllBody, ZonesBody } from "./Overlays";
+import { SourcesBody } from "./Sources";
+import { AddedAllBody, ItemBody } from "./Added";
+import { StoriesBody } from "./Stories";
+import { MarketsFull } from "./Insights";
+import { CustomizeBody, DEFAULT_LAYOUT, WorkspaceBody, type Layout } from "./Workspace";
+import { deptIcon, fmtDate, fmtShort, fmtTime, fullTitle, rel, sevTone, type Row } from "./lib";
+import { esc } from "./SatMap";
 import "./collector.css";
 
 const PERIOD_KEYS: Period[] = ["daily", "weekly", "monthly", "quarterly"];
-const ACTION_ORDER = ["Not started", "Pending", "In progress", "Done"];
+const FIT_W = 1366;
+const FIT_H = 680;
+export type PageKey = "overview" | "briefing" | "trends" | "environment";
+const PAGE_TITLE: Record<PageKey, string> = { overview: "Overview", briefing: "Briefing", trends: "Trends", environment: "Environment & markets" };
 
-export type ListPreset = Partial<{ dept: string; sev: string; status: string; q: string; sort: string; dir: number; scope: string }>;
+export type ListPreset = Partial<{ dept: string; sev: string; status: string; q: string; sort: string; dir: number; scope: string; cat: string; taluk: string }>;
 export interface DeptNav { code: string; name: string; head?: string | null; open: number; n: number; severe: number; unverified: number }
 type ModalState =
   | { kind: "list"; title: string; preset: ListPreset }
-  | { kind: "zones" | "depts" | "feeds" | "export" | "news"; title: string }
-  | { kind: "contact"; title: string; dept: Row; offices: Row[]; office?: Row };
+  | { kind: "zones" | "depts" | "export" | "news" | "workspace" | "customize"; title: string }
+  | { kind: "sources"; title: string; tab?: "sources" | "add" | "ocr" | "audit" }
+  | { kind: "contact"; title: string; dept: Row; contacts: Row[] }
+  | { kind: "text"; title: string; md: string }
+  | { kind: "item"; title: string; item: Row }
+  | { kind: "added"; title: string }
+  | { kind: "stories"; title: string; focus: string | null }
+  | { kind: "markets"; title: string };
 interface Toast { id: number; msg: string; kind: "ok" | "alert"; act?: { label: string; run: () => void } }
+export interface Archived { name: string; version: number; markdown: string; as_of: string; issued_at: string }
 
 /** Everything the screens need from the shell: state, navigation and actions. */
 export interface Console {
-  /** department filter (lead department code), null = all departments */
   dept: string | null;
   deptName: string | null;
   period: Period;
   periodLabel: string;
   zone: number | null;
   zoneName: string | null;
+  /** category chosen from a chart; filters every panel */
+  cat: string | null;
+  setCat: (c: string | null) => void;
+  /** taluk chosen from the map or the taluk ranking; filters every panel */
+  taluk: string | null;
+  setTaluk: (t: string | null) => void;
   now: string;
-  zoom: number;
   depts: DeptNav[];
+  geo: MapGeo | null;
+  page: PageKey;
+  setPage: (p: PageKey) => void;
+  mapMode: "zones" | "taluks";
+  setMapMode: (m: "zones" | "taluks") => void;
+  /** incident highlighted on the map */
+  focus: { id: string; lat: number; lon: number } | null;
+  locate: (i: Row) => void;
+  highlight: (i: Row) => void;
   layers: Record<string, boolean>;
   toggleLayer: (k: string) => void;
-  rtab: "all" | "portal" | "news";
-  setRtab: (t: "all" | "portal" | "news") => void;
-  hist: string | null;
-  setHist: (id: string) => void;
-  /** station chosen in each environment card: "auto" (follow the zone), "all", or a station id */
+  sevTab: string | null;
+  setSevTab: (s: string) => void;
   envSel: Record<string, string>;
   setEnvSel: (card: string, id: string) => void;
   busyIds: Set<string>;
@@ -49,23 +78,36 @@ export interface Console {
   setAsk: (v: boolean) => void;
   setDept: (code: string | null) => void;
   setZone: (z: number | null) => void;
-  openInc: (id: string, mode?: "news") => void;
-  filterDept: (i: Row) => void;
+  openInc: (id: string) => void;
   openList: (preset: ListPreset, title: string) => void;
   openNewsAll: () => void;
   openZones: () => void;
   openDepts: () => void;
   openFeeds: () => void;
-  openContact: (dept: Row, offices: Row[], office?: Row) => void;
-  openMenu: (i: Row, e: React.MouseEvent) => void;
-  tip: (html: string | null, e?: React.MouseEvent) => void;
+  openContact: (dept: Row, contacts: Row[]) => void;
+  /** an item from a source the Collector added: its text, category, place and source link */
+  openItem: (item: Row) => void;
+  openAdded: () => void;
+  openSources: (tab?: "sources" | "add" | "ocr" | "audit") => void;
+  /** developing stories: reports about the same event, followed over time */
+  openStories: (focus?: string | null) => void;
+  openMarkets: () => void;
   zoneTip: (z: number) => string;
+  zoneNameOf: (z: number) => string | null;
+  talukName: (code: string | null) => string | null;
   verify: (rows: Row[]) => Promise<boolean>;
-  decide: (rows: Row[], decision: string, note?: string) => Promise<boolean>;
-  cycleAction: (incidentId: string, a: Row) => void;
-  addAction: (incidentId: string, text: string) => Promise<boolean>;
+  sendBack: (row: Row) => Promise<boolean>;
   toast: (msg: string, kind?: "ok" | "alert", act?: Toast["act"]) => void;
   closeAll: () => void;
+  layout: Layout;
+  setLayout: (l: Layout) => void;
+  workspaceName: string | null;
+  openWorkspace: () => void;
+  saveWorkspace: (name: string) => Promise<number | null>;
+  openSavedWorkspace: (id: number) => Promise<void>;
+  archived: Archived | null;
+  closeArchived: () => void;
+  showText: (title: string, md: string) => void;
 }
 
 async function api(path: string, body?: unknown) {
@@ -75,49 +117,69 @@ async function api(path: string, body?: unknown) {
   return j;
 }
 
-export default function CollectorApp({ initial, shapes, allDepts, user }: {
-  initial: OverviewData; shapes: MapShapes; allDepts: { code: string; name: string; head: string | null }[]; user: string;
+function loadLayout(): Layout {
+  try {
+    const l = JSON.parse(localStorage.getItem("diq-layout") ?? "null");
+    if (l?.pages && l?.panels && Array.isArray(l?.kpis)) return l;
+  } catch { /* storage unavailable */ }
+  return DEFAULT_LAYOUT;
+}
+
+export default function CollectorApp({ initial, allDepts, user }: {
+  initial: OverviewData; allDepts: { code: string; name: string; head: string | null }[]; user: string;
 }) {
   const [dept, setDeptState] = useState<string | null>(null);
   const [period, setPeriod] = useState<Period>("daily");
   const [zone, setZoneState] = useState<number | null>(null);
+  const [cat, setCatState] = useState<string | null>(null);
+  const [taluk, setTalukState] = useState<string | null>(null);
+  const [page, setPageState] = useState<PageKey>("overview");
   const [ov, setOv] = useState<OverviewData>(initial);
+  const [ins, setIns] = useState<Insights | null>(null);
+  const [geo, setGeo] = useState<MapGeo | null>(null);
   const [loading, setLoading] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const [anim, setAnim] = useState(true);
-  const [layers, setLayers] = useState<Record<string, boolean>>({ severe: true, complaint: true, other: true, stations: true });
-  const [rtab, setRtab] = useState<"all" | "portal" | "news">("all");
-  const [hist, setHist] = useState<string | null>(null);
+  const [layers, setLayers] = useState<Record<string, boolean>>({ severe: true, complaint: true, other: true, added: true, stations: false });
+  const [mapMode, setMapMode] = useState<"zones" | "taluks">("zones");
+  const [focus, setFocus] = useState<Console["focus"]>(null);
+  const [sevTab, setSevTab] = useState<string | null>(null);
   const [envSel, setEnvSelState] = useState<Record<string, string>>({ rain: "auto", aqi: "auto", lake: "auto" });
-  const [drawer, setDrawer] = useState<{ id: string; mode?: "news" } | null>(null);
+  const [inc, setInc] = useState<string | null>(null);
   const [modal, setModal] = useState<ModalState | null>(null);
-  const [menu, setMenu] = useState<{ i: Row; top: number; left: number } | null>(null);
   const [pop, setPop] = useState<"bell" | "profile" | null>(null);
   const [bellRead, setBellRead] = useState(false);
   const [ask, setAsk] = useState(false);
   const [chat, setChat] = useState<{ r: "q" | "a"; h: ReactNode }[]>([]);
   const [toasts, setToasts] = useState<Toast[]>([]);
-  const [tipState, setTipState] = useState<{ html: string; x: number; y: number } | null>(null);
   const [busyIds, setBusyIds] = useState<Set<string>>(new Set());
-  const [navOpen, setNavOpen] = useState(false);
-  const [fit, setFit] = useState({ on: false, z: 1, w: 1600, h: 860 });
-  const appRef = useRef<HTMLDivElement>(null);
+  const [fit, setFit] = useState<{ on: boolean; z: number; w: number; h: number }>({ on: true, z: 1, w: 1366, h: 680 });
+  const [layout, setLayoutState] = useState<Layout>(DEFAULT_LAYOUT);
+  const [workspaceName, setWorkspaceName] = useState<string | null>(null);
+  const [archived, setArchived] = useState<Archived | null>(null);
   const firstLoad = useRef(true);
   const lastExport = useRef(initial.exportedAt);
   const dirty = useRef(false);
 
-  // ------------------------------------------------ fit-to-screen scaling --
+  // Fit to any screen: the console is laid out for a 1366 x 680 canvas and scaled to the
+  // window (down on small laptops and tablets, up to 1.3x on large monitors), so nothing
+  // ever scrolls. Phones in portrait are too narrow for four columns and stack instead.
   useLayoutEffect(() => {
     const f = () => {
       const w = window.innerWidth, h = window.innerHeight;
-      const on = w >= 980 && h >= 540;
-      setFit({ on, z: on ? Math.min(w / 1600, h / 860) : 1, w, h });
+      const on = w >= 700 && h >= 380;
+      const raw = Math.min(w / FIT_W, h / FIT_H);
+      const z = on ? Math.max(0.5, Math.min(1.3, raw > 1 && raw < 1.08 ? 1 : raw)) : 1;
+      setFit({ on, z: Math.round(z * 1000) / 1000, w, h });
     };
     f();
-    let t: ReturnType<typeof setTimeout>;
-    const onResize = () => { clearTimeout(t); t = setTimeout(f, 120); };
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
+    setLayoutState(loadLayout());
+    window.addEventListener("resize", f);
+    return () => window.removeEventListener("resize", f);
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/collector/geo").then((r) => (r.ok ? r.json() : null)).then((g) => g && setGeo(g)).catch(() => {});
   }, []);
 
   const toast = useCallback((msg: string, kind: "ok" | "alert" = "ok", act?: Toast["act"]) => {
@@ -126,20 +188,39 @@ export default function CollectorApp({ initial, shapes, allDepts, user }: {
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), kind === "alert" ? 7000 : 3600);
   }, []);
 
+  const qs = useMemo(() => {
+    const p = new URLSearchParams({ period });
+    if (zone) p.set("zone", String(zone));
+    if (dept) p.set("dept", dept);
+    if (cat) p.set("cat", cat);
+    if (taluk) p.set("taluk", taluk);
+    return p.toString();
+  }, [period, zone, dept, cat, taluk]);
+
   // --------------------------------------------------------------- data --
   useEffect(() => {
-    if (firstLoad.current && period === "daily" && zone === null && dept === null && reloadKey === 0) {
+    if (firstLoad.current && qs === "period=daily" && reloadKey === 0) {
       firstLoad.current = false;
       return;
     }
     let live = true;
     setLoading(true);
-    api(`/api/collector/overview?period=${period}${zone ? `&zone=${zone}` : ""}${dept ? `&dept=${encodeURIComponent(dept)}` : ""}`)
+    api(`/api/collector/overview?${qs}`)
       .then((j) => live && setOv(j))
       .catch((e) => live && toast(e.message, "alert"))
       .finally(() => live && setLoading(false));
     return () => { live = false; };
-  }, [period, zone, dept, reloadKey, toast]);
+  }, [qs, reloadKey, toast]);
+
+  // briefing, trends and markets load when a page needs them
+  const needIns = page !== "overview";
+  useEffect(() => {
+    if (!needIns) return;
+    let live = true;
+    setIns(null);
+    api(`/api/collector/insights?${qs}`).then((j) => live && setIns(j)).catch((e) => live && toast(e.message, "alert"));
+    return () => { live = false; };
+  }, [qs, reloadKey, needIns, toast]);
 
   useEffect(() => {
     if (!anim) return;
@@ -148,7 +229,7 @@ export default function CollectorApp({ initial, shapes, allDepts, user }: {
   }, [anim, ov]);
 
   // New data from the pipeline: check every minute, refresh when nothing is open.
-  const busy = () => !!(drawer || modal || (document.activeElement && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)));
+  const busy = () => !!(inc || modal || (document.activeElement && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)));
   useEffect(() => {
     const t = setInterval(async () => {
       try {
@@ -167,27 +248,39 @@ export default function CollectorApp({ initial, shapes, allDepts, user }: {
 
   // --------------------------------------------------------- navigation --
   const closeAll = useCallback(() => {
-    setDrawer(null);
+    setInc(null);
     setModal(null);
     if (dirty.current) { dirty.current = false; setReloadKey((k) => k + 1); }
   }, []);
+  const pages = (Object.keys(PAGE_TITLE) as PageKey[]).filter((k) => k === "overview" || layout.pages[k as keyof Layout["pages"]]);
+  const setPage = (p: PageKey) => { setPageState(p); setAnim(true); };
   const setDept = (code: string | null) => {
     closeAll();
-    setNavOpen(false);
     setDeptState(code);
-    setHist(null);
     setAnim(true);
     const name = code ? allDepts.find((d) => d.code === code)?.name : null;
     if (name) toast(`Showing ${name} only. All panels filtered.`);
   };
   const setZone = (z: number | null) => {
     setZoneState(z);
-    setHist(null);
     setEnvSelState({ rain: "auto", aqi: "auto", lake: "auto" });
     setAnim(true);
     closeAll();
     const name = z ? ov.zoneTable.find((x) => x.zone === z)?.name : null;
     if (z && name) toast(`Showing ${name}. All panels filtered.`);
+  };
+  const talukName = (code: string | null) => (code ? geo?.taluks.find((t) => t.code === code)?.name ?? code : null);
+  const catLabel = cat ? ins?.trends.weekly.lines.find((l) => l.cat === cat)?.label ?? cat.replace(/_/g, " ").toLowerCase() : null;
+  const setCat = (c: string | null) => {
+    setCatState(c);
+    setAnim(true);
+    if (c) toast("Category filter applied to the map, lists, briefing and follow-ups.");
+  };
+  const setTaluk = (t: string | null) => {
+    setTalukState(t);
+    setAnim(true);
+    closeAll();
+    if (t) toast(`Showing ${talukName(t)} taluk. All panels filtered.`);
   };
 
   const depts: DeptNav[] = useMemo(() => {
@@ -199,163 +292,157 @@ export default function CollectorApp({ initial, shapes, allDepts, user }: {
 
   const zoneName = zone ? ov.zoneTable.find((z) => z.zone === zone)?.name ?? `Zone ${zone}` : null;
   const deptName = dept ? allDepts.find((d) => d.code === dept)?.name ?? dept : null;
-  const scopeName = [zoneName, deptName].filter(Boolean).join(" · ") || "District-wide";
+  const scopeName = [zoneName, deptName, catLabel, taluk ? `${talukName(taluk)} taluk` : null].filter(Boolean).join(" · ") || "District-wide";
 
   // ------------------------------------------------------------ actions --
-  const withBusy = async <T,>(ids: string[], fn: () => Promise<T>): Promise<T> => {
-    setBusyIds((s) => new Set([...s, ...ids]));
-    try { return await fn(); } finally { setBusyIds((s) => { const n = new Set(s); ids.forEach((x) => n.delete(x)); return n; }); }
-  };
-
   const decide = async (rows: Row[], decision: string, note?: string) => {
     const ids = rows.map((r) => r.id);
+    setBusyIds((s) => new Set([...s, ...ids]));
     try {
-      const j = await withBusy(ids, () => api("/api/collector/decisions", { incidentIds: ids, decision, note: note || null }));
+      await api("/api/collector/decisions", { incidentIds: ids, decision, note: note || null });
       const one = rows[0];
-      const what = rows.length > 1 ? `${rows.length} incidents` : `${one.type}, ${one.zone_name ?? "Chennai"}`;
-      const msg: Record<string, string> = {
-        verify: rows.length > 1 ? `${rows.length} incidents verified.` : `Verified: ${what}.`,
-        escalate: `Escalated ${what}${j.saved?.[0]?.escalated_to_level ? ` to ${j.saved[0].escalated_to_level}` : ""}.`,
-        resolve: `Resolved: ${what}.`,
-        reject: note === "Dismissed as duplicate" ? `Dismissed ${what} as duplicate.` : `Rejected: ${what}.`,
-        reopen: `Reopened: ${what}.`,
-        note: "Note added to the incident history."
-      };
-      toast(msg[decision] ?? "Saved.");
+      const what = rows.length > 1 ? `${rows.length} complaints` : `${one.type}, ${one.zone_name ?? "Chennai"}`;
+      toast(decision === "verify" ? `Verified: ${what}. The citizen will see it closed.` : `Sent back to ${one.dept_name ?? "the department"}: ${what}.`);
       setReloadKey((k) => k + 1);
       return true;
     } catch (e: any) {
       toast(e.message, "alert");
       return false;
+    } finally {
+      setBusyIds((s) => { const n = new Set(s); ids.forEach((x) => n.delete(x)); return n; });
     }
   };
 
-  const cycleAction = async (incidentId: string, a: Row) => {
-    const next = ACTION_ORDER[(ACTION_ORDER.indexOf(a.status) + 1) % ACTION_ORDER.length];
+  const setLayout = (l: Layout) => {
+    setLayoutState(l);
+    try { localStorage.setItem("diq-layout", JSON.stringify(l)); } catch { /* not saved in this browser */ }
+    if (page !== "overview" && !l.pages[page as keyof Layout["pages"]]) setPage("overview");
+  };
+
+  const saveWorkspace = async (name: string) => {
     try {
-      await api("/api/collector/actions", { incidentId, actionId: a.id, status: next });
-      toast(`Action set to ${next}.`);
-      setReloadKey((k) => k + 1);
+      const snap: Insights = ins ?? (await api(`/api/collector/insights?${qs}`));
+      const r = await api("/api/collector/workspaces", {
+        name,
+        filters: { period, zone, dept, cat, taluk, page, zoneName, deptName, catLabel, talukName: talukName(taluk), layers, envSel },
+        layout,
+        briefing: { md: snap.briefing.md, facts: { headline: snap.briefing.headline, attention: snap.briefing.attention.map((a) => a.id), scope: snap.scope }, period, asOf: snap.now }
+      });
+      setWorkspaceName(name);
+      toast(`Saved "${name}" as version ${r.version}, with a frozen copy of the briefing.`);
+      return r.version as number;
+    } catch (e: any) {
+      toast(e.message, "alert");
+      return null;
+    }
+  };
+
+  const openSavedWorkspace = async (id: number) => {
+    try {
+      const w = await api(`/api/collector/workspaces/${id}`);
+      const f = w.filters ?? {};
+      setPeriod(f.period ?? "daily");
+      setZoneState(f.zone ?? null);
+      setDeptState(f.dept ?? null);
+      setCatState(f.cat ?? null);
+      setTalukState(f.taluk ?? null);
+      if (f.layers) setLayers(f.layers);
+      if (f.envSel) setEnvSelState(f.envSel);
+      if (w.layout?.pages) setLayout(w.layout);
+      setWorkspaceName(w.name);
+      setArchived(w.briefing ? { name: w.name, version: w.version, markdown: w.briefing.markdown, as_of: w.briefing.as_of, issued_at: w.briefing.issued_at } : null);
+      closeAll();
+      setPage(w.briefing ? "briefing" : (f.page ?? "overview"));
+      toast(`Opened "${w.name}" v${w.version} from ${fmtShort(w.created_at)}. Panels show live data; the Briefing shows the saved copy.`);
     } catch (e: any) {
       toast(e.message, "alert");
     }
-  };
-
-  const addAction = async (incidentId: string, text: string) => {
-    try {
-      await api("/api/collector/actions", { incidentId, text });
-      toast("Action added.");
-      setReloadKey((k) => k + 1);
-      return true;
-    } catch (e: any) {
-      toast(e.message, "alert");
-      return false;
-    }
-  };
-
-  const zr = () => {
-    const r = appRef.current?.getBoundingClientRect();
-    return r && fit.on && Math.abs(r.width - window.innerWidth) < 2 ? fit.z : 1;
   };
 
   const c: Console = {
-    dept, deptName, period, periodLabel: ov.periodInfo.label, zone, zoneName, now: ov.now, zoom: fit.on ? fit.z : 1, depts,
+    dept, deptName, period, periodLabel: ov.periodInfo.label, zone, zoneName, cat, setCat, taluk, setTaluk, now: ov.now, depts, geo, page, setPage,
+    mapMode, setMapMode, focus,
+    locate: (i) => {
+      if (i.lat == null) { toast("This incident has no map location.", "alert"); return; }
+      closeAll();
+      setPage("overview");
+      setFocus({ id: i.id, lat: Number(i.lat), lon: Number(i.lon) });
+    },
+    highlight: (i) => { if (i.lat != null) setFocus({ id: i.id, lat: Number(i.lat), lon: Number(i.lon) }); },
     layers, toggleLayer: (k) => setLayers((l) => ({ ...l, [k]: !l[k] })),
-    rtab, setRtab, hist, setHist,
+    sevTab, setSevTab,
     envSel, setEnvSel: (card, id) => setEnvSelState((m) => ({ ...m, [card]: id })),
     busyIds, reloadKey, chat, setChat, setAsk,
     setDept, setZone,
-    openInc: (id, mode) => { setModal(null); setMenu(null); setDrawer({ id, mode }); },
-    filterDept: (i) => setDept(i.dept),
-    openList: (preset, title) => { setDrawer(null); setModal({ kind: "list", title: `${title} · ${scopeName}`, preset }); },
+    openInc: (id) => { setModal(null); setInc(id); },
+    openList: (preset, title) => { setInc(null); setModal({ kind: "list", title: `${title} · ${scopeName}`, preset: { cat: cat ?? undefined, taluk: taluk ?? undefined, ...preset } }); },
     openNewsAll: () => setModal({ kind: "news", title: `Today's Briefing · news · ${scopeName}` }),
     openZones: () => setModal({ kind: "zones", title: "Zones by open complaints" }),
     openDepts: () => setModal({ kind: "depts", title: "Departments" }),
-    openFeeds: () => setModal({ kind: "feeds", title: "Data feeds" }),
-    openContact: (dept, offices, office) => setModal({ kind: "contact", title: `Contact ${office?.officer_name ?? dept.head}`, dept, offices, office }),
-    openMenu: (i, e) => {
-      e.stopPropagation();
-      const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-      const k = zr();
-      const vw = window.innerWidth / (fit.on ? fit.z : 1), vh = window.innerHeight / (fit.on ? fit.z : 1);
-      setMenu({ i, top: Math.min(r.bottom / k + 6, vh - 230), left: Math.max(8, Math.min(r.right / k - 230, vw - 240)) });
-    },
-    tip: (html, e) => {
-      if (!html || !e) return setTipState(null);
-      const z = fit.on ? fit.z : 1;
-      setTipState({ html, x: Math.min(e.clientX / z + 14, window.innerWidth / z - 250), y: e.clientY / z + 14 });
-    },
+    openFeeds: () => setModal({ kind: "sources", title: "Data sources" }),
+    openContact: (d, contacts) => setModal({ kind: "contact", title: `${d.name} · official contacts`, dept: d, contacts }),
+    openItem: (item) => { setInc(null); setModal({ kind: "item", title: `From an added source · ${item.source}`, item }); },
+    openAdded: () => setModal({ kind: "added", title: `From added sources · ${scopeName}` }),
+    openSources: (tab) => setModal({ kind: "sources", title: "Data sources", tab }),
+    openStories: (focus = null) => setModal({ kind: "stories", title: `Developing stories · ${scopeName}`, focus }),
+    openMarkets: () => setModal({ kind: "markets", title: "Mandi prices at Chennai markets" }),
     zoneTip: (z) => {
       const r = ov.zoneTable.find((x) => x.zone === z);
       if (!r) return `<b>Zone ${z}</b>`;
-      return `<b>${esc(r.name)}</b>${r.open} open · ${r.severe} severe · ${r.complaints} complaints<br><span style="opacity:.7">Click to ${zone === z ? "keep" : "filter to"} this zone</span>`;
+      return `<b>${esc(r.name)}</b>${r.open} open · ${r.severe} severe · ${r.complaints} complaints<br><span style="opacity:.7">Click to ${zone === z ? "keep" : "filter to"} this zone</span><br>`;
     },
+    talukName,
+    zoneNameOf: (z) => ov.zoneTable.find((x) => x.zone === z)?.name ?? null,
     verify: (rows) => decide(rows, "verify"),
-    decide, cycleAction, addAction, toast, closeAll
+    sendBack: (row) => decide([row], "reopen", "Sent back to the department: the Collector did not accept the reported action."),
+    toast, closeAll,
+    layout, setLayout, workspaceName,
+    openWorkspace: () => setModal({ kind: "workspace", title: "Workspaces" }),
+    saveWorkspace, openSavedWorkspace, archived, closeArchived: () => setArchived(null),
+    showText: (title, md) => setModal({ kind: "text", title, md })
   };
 
   // --------------------------------------------------------- keyboard --
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      const typing = /INPUT|TEXTAREA|SELECT/.test((document.activeElement as HTMLElement)?.tagName);
       if (e.key === "Escape") {
-        if (drawer || modal) closeAll();
+        if (inc || modal) closeAll();
         else if (ask) setAsk(false);
-        setMenu(null);
         setPop(null);
-        setNavOpen(false);
       }
-      if (e.key === "/" && !/INPUT|TEXTAREA|SELECT/.test((document.activeElement as HTMLElement)?.tagName)) {
+      if (e.key === "/" && !typing) {
         e.preventDefault();
         document.getElementById("dic-q")?.focus();
+      }
+      if (!typing && !inc && !modal && (e.key === "PageDown" || e.key === "PageUp")) {
+        e.preventDefault();
+        const k = pages.indexOf(page) + (e.key === "PageDown" ? 1 : -1);
+        if (pages[k]) setPage(pages[k]);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [drawer, modal, ask, closeAll]);
+  }, [inc, modal, ask, closeAll, page, pages]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const bellItems = ov.bell;
-  const bellN = bellRead ? 0 : bellItems.length;
+  const bellN = bellRead ? 0 : ov.bell.length;
   const feedsOk = ov.feeds.filter((f) => f.status === "ok").length;
+  const pi = pages.indexOf(page);
 
   return (
-    <div className={`dic${fit.on ? " fit" : ""}${navOpen ? " nav-open" : ""}`}
-      onClick={(e) => {
-        const t = e.target as HTMLElement;
-        if (!t.closest(".pop") && !t.closest("[data-pop]")) setPop(null);
-        if (!t.closest(".menu") && !t.closest(".kebab")) setMenu(null);
-      }}>
+    <div className={`dic${fit.on ? " fit" : ""}`}
+      onClick={(e) => { if (!(e.target as HTMLElement).closest(".pop") && !(e.target as HTMLElement).closest("[data-pop]")) setPop(null); }}>
       <svg width="0" height="0" style={{ position: "absolute" }} aria-hidden="true">
-        <defs>
-          <linearGradient id="gBar" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stopColor="#4D8DFF" /><stop offset="1" stopColor="#B9D2FF" /></linearGradient>
-          <linearGradient id="gSea" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stopColor="#D5E7FC" /><stop offset="1" stopColor="#A9CBF6" /></linearGradient>
-        </defs>
+        <defs><linearGradient id="gBar" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stopColor="#4D8DFF" /><stop offset="1" stopColor="#B9D2FF" /></linearGradient></defs>
       </svg>
       {loading && <div className="loading-bar" />}
-      <div className="app" ref={appRef} style={fit.on ? { zoom: fit.z, width: fit.w / fit.z, height: fit.h / fit.z } : undefined}>
-        <aside className="side">
-          <div className="brand">
-            <div className="brand-mark"><I n="gov" /></div>
-            <div><b>Chennai District</b><small>Collector&apos;s Intelligence Console</small></div>
-          </div>
-          <nav className="nav" aria-label="Main">
-            <button className="nav-i on" onClick={() => { setDept(null); setZone(null); }}><I n="home" />Overview</button>
-          </nav>
-          <div className="feeds">
-            <b>Data feeds <span style={{ color: feedsOk === ov.feeds.length ? "#3FE39A" : "#F6C343" }}>{feedsOk}/{ov.feeds.length} healthy</span></b>
-            {ov.feeds.map((f) => (
-              <span key={f.source} style={{ cursor: "pointer" }} onClick={() => c.openFeeds()}>
-                <i style={f.status === "ok" ? undefined : { background: "#F6C343", boxShadow: "0 0 0 3px rgba(246,195,67,.2)" }} />
-                {FEED_NAME[f.source] ?? f.source}
-                <em>{f.newest ? rel(f.newest, ov.now) : "—"}</em>
-              </span>
-            ))}
-          </div>
-          <div className="side-tag">People · Responsive · Transparent · Inclusive</div>
-        </aside>
-
+      <div className="app" style={fit.on ? { zoom: fit.z, width: fit.w / fit.z, height: fit.h / fit.z } : undefined}>
         <div className="main">
           <header className="top">
-            <button className="hamb" onClick={(e) => { e.stopPropagation(); setNavOpen((v) => !v); }} aria-label="Open menu"><I n="menu" /></button>
+            <div className="tbrand"><Logo className="tlogo" /><span><b>District <span>IQ</span></b><small>Collector&apos;s Console · Chennai</small></span></div>
+            <button className="feedlight" onClick={c.openFeeds} title="Data sources: status, refresh, add a source, OCR, audit log">
+              <i className={feedsOk === ov.feeds.length ? "" : "warn"} />{feedsOk}/{ov.feeds.length} feeds live
+            </button>
             <Search c={c} ov={ov} />
             <div className="seg" role="tablist" aria-label="Period">
               {PERIOD_KEYS.map((p) => (
@@ -363,18 +450,19 @@ export default function CollectorApp({ initial, shapes, allDepts, user }: {
                   onClick={() => { setPeriod(p); setAnim(true); }}>{p[0].toUpperCase() + p.slice(1)}</button>
               ))}
             </div>
-            <Clock />
-            <button className="tbtn" onClick={() => setModal({ kind: "export", title: "Export incidents" })}><I n="download" /><span className="lb">Export</span></button>
+            <button className="tbtn" onClick={c.openWorkspace} title="Save or reopen a workspace"><I n="layers" /><span className="lb">{workspaceName ? workspaceName.slice(0, 18) : "Workspace"}</span></button>
+            <button className="tbtn icon" onClick={() => setModal({ kind: "customize", title: "Customize the dashboard" })} title="Choose what the dashboard shows" aria-label="Customize"><I n="sliders" /></button>
+            <button className="tbtn pri" onClick={() => setModal({ kind: "export", title: "Export report" })}><I n="download" /><span className="lb">Export</span></button>
             <div className="rel">
-              <button className="tbtn" data-pop onClick={() => setPop((p) => (p === "bell" ? null : "bell"))} aria-label="Alerts">
+              <button className="tbtn icon" data-pop onClick={() => setPop((p) => (p === "bell" ? null : "bell"))} aria-label="Alerts">
                 <I n="bell" />{bellN > 0 && <span className="dot-n">{bellN}</span>}
               </button>
               {pop === "bell" && (
                 <div className="pop">
                   <div className="pop-h">Severe and high · last 24 hours<button className="lnk" onClick={() => { setBellRead(true); setPop(null); }}>Mark all read</button></div>
-                  {bellItems.length ? bellItems.map((i) => (
+                  {ov.bell.length ? ov.bell.map((i) => (
                     <button key={i.id} className="pop-i" onClick={() => { setPop(null); c.openInc(i.id); }}>
-                      <span className={`kpi-ic ${sevTone(i.sev)}`} style={{ width: 32, height: 32 }}><I n={deptIcon(i.dept)} /></span>
+                      <span className={`kpi-ic ${sevTone(i.sev)}`} style={{ width: 34, height: 34 }}><I n={deptIcon(i.dept)} /></span>
                       <span><b>{fullTitle(i)}</b><small>{i.zone_name ?? "Chennai"} · {i.sev} · {rel(i.t, ov.now)}</small></span>
                     </button>
                   )) : <div className="empty">No alerts.</div>}
@@ -384,16 +472,17 @@ export default function CollectorApp({ initial, shapes, allDepts, user }: {
             <div className="rel">
               <button className="me" data-pop onClick={() => setPop((p) => (p === "profile" ? null : "profile"))}>
                 <span className="avatar">CO</span>
-                <span className="who"><b>Collector&apos;s Office</b><small>{user}</small></span><I n="chevd" />
+                <span className="who"><b>Collector&apos;s Office</b></span><I n="chevd" />
               </button>
               {pop === "profile" && (
-                <div className="pop" style={{ width: 280 }}>
+                <div className="pop" style={{ width: 290 }}>
                   <div className="pop-h">Collector&apos;s Office</div>
-                  <div style={{ padding: "0 8px 8px", color: "var(--text-3)", fontSize: 12 }}>
+                  <div style={{ padding: "0 8px 8px", color: "var(--text-3)", fontSize: 13 }}>
                     Signed in as {user}. Figures come from the district intelligence store, as of {fmtTime(ov.now)}.
                   </div>
+                  <button className="pop-i" onClick={() => { setPop(null); setModal({ kind: "sources", title: "Data sources", tab: "audit" }); }}><I n="doc" /><span><b>Audit log</b><small>Every decision and change</small></span></button>
                   <button className="pop-i" onClick={() => { setPop(null); setReloadKey((k) => k + 1); }}><I n="refresh" /><span><b>Reload data</b><small>Fetch the latest from the store</small></span></button>
-                  <button className="pop-i" onClick={() => { setPop(null); setDept(null); setZone(null); }}><I n="home" /><span><b>Clear all filters</b><small>Whole district, all departments</small></span></button>
+                  <button className="pop-i" onClick={() => { setPop(null); setDept(null); setZone(null); setCatState(null); setTalukState(null); }}><I n="home" /><span><b>Clear all filters</b><small>Whole district, every department</small></span></button>
                   <button className="pop-i" onClick={async () => { await fetch("/api/auth/logout", { method: "POST" }); window.location.href = "/login"; }}>
                     <I n="user" /><span><b>Sign out</b></span>
                   </button>
@@ -402,34 +491,69 @@ export default function CollectorApp({ initial, shapes, allDepts, user }: {
             </div>
           </header>
 
-          <div id="view" className={anim ? "anim" : ""}>
-            <Overview d={ov} shapes={shapes} c={c} />
+          <div className="body">
+            <section className="phead">
+              <h1>{PAGE_TITLE[page]}</h1>
+              <label className="fsel" title="Zone (Greater Chennai Corporation)"><I n="pin" />Zone
+                <select value={zone ?? ""} onChange={(e) => setZone(e.target.value ? Number(e.target.value) : null)} aria-label="Zone">
+                  <option value="">All 15 zones</option>
+                  {ov.zoneTable.map((z) => <option key={z.zone} value={z.zone}>{z.name}</option>)}
+                </select>
+              </label>
+              <label className="fsel" title="Revenue taluk"><I n="map" />Taluk
+                <select value={taluk ?? ""} onChange={(e) => setTaluk(e.target.value || null)} aria-label="Taluk">
+                  <option value="">All taluks</option>
+                  {[...(geo?.taluks ?? [])].sort((a, b) => a.name.localeCompare(b.name)).map((t) => <option key={t.code} value={t.code}>{t.name}</option>)}
+                </select>
+              </label>
+              <label className="fsel" title="Department"><I n="gov" />Department
+                <select value={dept ?? ""} onChange={(e) => setDept(e.target.value || null)} aria-label="Department">
+                  <option value="">All departments</option>
+                  {depts.map((d) => <option key={d.code} value={d.code}>{d.name}{d.open ? ` (${d.open} open)` : ""}</option>)}
+                </select>
+              </label>
+              {cat && <span className="fchip alt" title="Category filter">{catLabel}<button onClick={() => setCat(null)} aria-label="Clear category"><I n="x" /></button></span>}
+              {(zone || dept || cat || taluk) && <span className="fchip">Clear<button onClick={() => { setDept(null); setZone(null); setCatState(null); setTalukState(null); }} aria-label="Clear all filters"><I n="x" /></button></span>}
+              <span className="asof">Data as of <b>{fmtTime(ov.now)}</b>, {fmtDate(ov.now)}</span>
+              <div className="pager" role="tablist" aria-label="Pages">
+                <button className="nx" onClick={() => pages[pi - 1] && setPage(pages[pi - 1])} disabled={pi <= 0} aria-label="Previous page"><I n="chevl" /></button>
+                {pages.map((p, k) => (
+                  <button key={p} role="tab" aria-selected={page === p} className={`pg${page === p ? " on" : ""}`} onClick={() => setPage(p)} title={PAGE_TITLE[p]}>
+                    <i>{k + 1}</i>{page === p && <span>{p === "environment" ? "Environment" : PAGE_TITLE[p]}</span>}
+                  </button>
+                ))}
+                <button className="nx" onClick={() => pages[pi + 1] && setPage(pages[pi + 1])} disabled={pi >= pages.length - 1} aria-label="Next page"><I n="chevr" /></button>
+              </div>
+            </section>
+            <div id="view" className={anim ? "anim" : ""}>
+              {page === "overview" ? <Page1 d={ov} c={c} />
+                : page === "briefing" ? <BriefingPage ins={ins} c={c} />
+                  : page === "trends" ? <TrendsPage ins={ins} c={c} />
+                    : <EnvPage d={ov} ins={ins} c={c} />}
+            </div>
           </div>
         </div>
 
-        {(drawer || modal) && <div className="scrim" onClick={closeAll} />}
-        {drawer && <Drawer id={drawer.id} mode={drawer.mode} c={c} />}
+        {(inc || modal) && <div className="scrim" onClick={closeAll} />}
+        {inc && <IncidentView id={inc} c={c} />}
         {modal && (
-          <Modal title={modal.title} c={c}>
+          <Modal title={modal.title} c={c} narrow={["depts", "zones", "customize", "item"].includes(modal.kind)} wide={modal.kind === "stories" || modal.kind === "markets"}>
             {modal.kind === "list" ? <ListBody key={modal.title} preset={modal.preset} c={c} />
               : modal.kind === "zones" ? <ZonesBody d={ov} c={c} />
                 : modal.kind === "depts" ? <DeptsBody c={c} />
-                  : modal.kind === "feeds" ? <FeedsBody d={ov} />
+                  : modal.kind === "sources" ? <SourcesBody c={c} initial={modal.tab} />
                     : modal.kind === "export" ? <ExportBody c={c} />
                       : modal.kind === "news" ? <NewsAllBody d={ov} c={c} />
-                        : modal.kind === "contact" ? <ContactBody dept={modal.dept} offices={modal.offices} office={modal.office} c={c} /> : null}
+                        : modal.kind === "workspace" ? <WorkspaceBody c={c} />
+                          : modal.kind === "customize" ? <CustomizeBody c={c} />
+                            : modal.kind === "contact" ? <ContactBody dept={modal.dept} contacts={modal.contacts} />
+                              : modal.kind === "text" ? <div className="md" dangerouslySetInnerHTML={{ __html: mdToHtml(modal.md) }} />
+                                : modal.kind === "item" ? <ItemBody item={modal.item} c={c} />
+                                  : modal.kind === "added" ? <AddedAllBody d={ov} c={c} />
+                                    : modal.kind === "stories" ? <StoriesBody d={ov} c={c} focus={modal.focus} />
+                                      : modal.kind === "markets" ? <MarketsFull ins={ins} c={c} /> : null}
           </Modal>
         )}
-        {menu && (
-          <div className="menu" style={{ top: menu.top, left: menu.left }}>
-            <button onClick={() => c.openInc(menu.i.id)}><I n="doc" />View details</button>
-            <button onClick={() => { setMenu(null); decide([menu.i], "escalate"); }}><I n="esc" />Escalate</button>
-            {menu.i.dept !== dept && <button onClick={() => { setMenu(null); setDept(menu.i.dept); }}><I n={deptIcon(menu.i.dept)} />Show {shortDept(menu.i.dept)} only</button>}
-            {menu.i.zone && <button onClick={() => { setMenu(null); setZone(menu.i.zone); }}><I n="pin" />Filter to {menu.i.zone_name}</button>}
-            <button onClick={() => { setMenu(null); decide([menu.i], "reject", "Dismissed as duplicate"); }}><I n="x" />Dismiss as duplicate</button>
-          </div>
-        )}
-        {tipState && <div className="tip" style={{ left: tipState.x, top: tipState.y }} dangerouslySetInnerHTML={{ __html: tipState.html }} />}
         <div className="toasts">
           {toasts.map((t) => (
             <div key={t.id} className={`toast${t.kind === "alert" ? " alert" : ""}`}>
@@ -438,29 +562,9 @@ export default function CollectorApp({ initial, shapes, allDepts, user }: {
             </div>
           ))}
         </div>
-        <button className="ask-fab" onClick={() => setAsk((v) => !v)} aria-label="Open assistant"><I n="spark" />Ask Chennai AI</button>
+        <button className="ask-fab" onClick={() => setAsk((v) => !v)} aria-label="Ask District IQ"><I n="spark" /><span>Ask District IQ</span></button>
         {ask && <Ask c={c} d={ov} />}
       </div>
-    </div>
-  );
-}
-
-const FEED_NAME: Record<string, string> = {
-  grievance: "Grievance portal", police: "Police reports", pwd: "PWD records", hospital: "Hospitals",
-  news: "News monitor", imd: "IMD weather", cpcb: "Air quality", cfm: "Flood monitoring"
-};
-
-function Clock() {
-  const [t, setT] = useState<Date | null>(null);
-  useEffect(() => {
-    setT(new Date());
-    const i = setInterval(() => setT(new Date()), 1000);
-    return () => clearInterval(i);
-  }, []);
-  return (
-    <div className="clock">
-      <b>{t ? t.toLocaleTimeString("en-US", { timeZone: "Asia/Kolkata", hour12: true }) : "--:--:--"}</b>
-      <small>{t ? t.toLocaleDateString("en-GB", { timeZone: "Asia/Kolkata", weekday: "short", day: "numeric", month: "short", year: "numeric" }) : ""} · IST</small>
     </div>
   );
 }

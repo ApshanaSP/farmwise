@@ -20,12 +20,17 @@
     "dataset:generate": "node scripts/generate-synthetic-grievances.js",
     "dataset:export": "node scripts/export-grievance-dataset.js",
     "dataset:validate": "node scripts/validate-grievance-dataset.js",
-    "dataset:unseed": "node scripts/generate-synthetic-grievances.js --unseed"
+    "dataset:unseed": "node scripts/generate-synthetic-grievances.js --unseed",
+    "seed:contacts": "node scripts/seed-official-contacts.js",
+    "setup:ops": "node scripts/setup-intel-ops.js",
+    "validate:locations": "node scripts/validate-locations.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
     "dotenv": "^16.4.5",
     "jose": "^5.9.6",
+    "jspdf": "^2.5.2",
+    "jspdf-autotable": "^3.8.4",
     "leaflet": "^1.9.4",
     "lucide-react": "^1.47.0",
     "mysql2": "^3.11.3",
@@ -33,6 +38,7 @@
     "nodemailer": "^6.9.15",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "tesseract.js": "^5.1.1",
     "zod": "^3.23.8"
   },
   "devDependencies": {

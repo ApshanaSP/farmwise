@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { collectorSession, failed } from "@/lib/collector/guard";
-import { list, parseDept, parsePeriod, parseZone } from "@/lib/collector/intel";
+import { list, parseCat, parseDept, parsePeriod, parseTaluk, parseZone } from "@/lib/collector/intel";
 
 export const dynamic = "force-dynamic";
 
 const SEVS = ["Severe", "High", "Medium", "Low"];
-const STATUSES = ["open", "unverified", "verified", "critical", "Open", "Under review", "Assigned", "In progress",
+const STATUSES = ["open", "awaiting", "unverified", "verified", "critical", "Open", "Under review", "Assigned", "In progress",
   "Awaiting verification", "Resolved", "Rejected", "Lapsed"];
 
 export async function GET(req: NextRequest) {
@@ -22,6 +22,8 @@ export async function GET(req: NextRequest) {
         zone: parseZone(p.get("zone")),
         dept: parseDept(p.get("dept")),
         sev: sev && SEVS.includes(sev) ? sev : null,
+        cat: parseCat(p.get("cat")),
+        taluk: parseTaluk(p.get("taluk")),
         status: status && STATUSES.includes(status) ? status : null,
         q: (p.get("q") || "").trim().slice(0, 80) || null,
         sort: sort === "sev" || sort === "c" || sort === "r" || sort === "d" ? sort : "t",

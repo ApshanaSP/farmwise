@@ -72,12 +72,10 @@ export default function Header({ userName, homeHref = "/", nav = [] }: HeaderPro
         <Link href={homeHref} className="group flex items-center gap-3">
           <Logo className="h-10 w-10 transition-transform duration-300 ease-spring group-hover:scale-105" />
           <span className="leading-tight">
-            <span className="block font-display text-sm font-bold text-ink sm:text-[15px]">
-              District Collectorate &ndash; Chennai
+            <span className="block font-display text-[15px] font-extrabold tracking-tight text-ink sm:text-base">
+              District <span className="text-navy-500">IQ</span>
             </span>
-            <span className="block text-2xs tracking-wide text-ink-subtle">
-              Public Grievance Redressal Portal
-            </span>
+            <span className="block text-xs text-ink-subtle">Chennai Intelligent District Governance Platform</span>
           </span>
         </Link>
 

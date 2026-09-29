@@ -1,151 +1,123 @@
 "use client";
 
 import type { Overview as OverviewData, Station } from "@/lib/collector/intel";
-import type { MapShapes } from "@/lib/collector/geo";
+import type { MapGeo } from "@/lib/collector/geo";
 import { I, type IconName } from "./icons";
-import MapSvg, { MapScale, STATION_STYLE, type MapStation } from "./MapSvg";
+import SatMap, { type MapStation } from "./SatMap";
 import {
-  Bars, Cnt, Empty, HBars, Line, SevChip, Spark, StChip, deptIcon, fmtDate, fmtShort, fmtTime, fullTitle, isNews, isPortal, ms,
-  rel, sevTone, sum, type Row
+  Chart, Cnt, Empty, HBars, SEVS, SEV_HEX, Sources, Spark, deptIcon, fmtDate, fmtTime, fullTitle,
+  fmtShort, ms, rel, sevTone, sum, type Row
 } from "./lib";
 import type { Console } from "./CollectorApp";
+import type { Insights } from "@/lib/collector/insights";
+import { MarketsCard } from "./Insights";
+import { AddedRow } from "./Added";
+import { StoriesCard } from "./Stories";
+import { useState } from "react";
 
-export default function Overview({ d, shapes, c }: { d: OverviewData; shapes: MapShapes; c: Console }) {
-  const zone = d.zone ? d.zoneTable.find((z) => z.zone === d.zone) : null;
-  const tag = [zone?.name, c.deptName].filter(Boolean).join(" · ") || "District-wide";
+// =================================================================== page 1 ==
+
+export function Page1({ d, c }: { d: OverviewData; c: Console }) {
   const P = d.periodInfo;
-  const env = useEnv(d, shapes, c);
+  const env = useEnv(d, c.geo, c);
+  const L = c.layout;
   let ix = 0;
   const iv = () => ({ "--i": ix++ }) as React.CSSProperties;
 
+  const KPIS: Record<string, React.ReactNode> = {
+    severe: <Kpi key="severe" k="severe" icon="bell" tone="t-sev" label="Severe events" v={d.kpi.cur.severe} p={d.kpi.prev.severe}
+      goodDown series={d.kpi.series.severe} prevLabel={P.prev} style={iv()} onClick={() => c.openList({ sev: "Severe" }, "Severe events")} />,
+    complaints: <Kpi key="complaints" k="complaints" icon="chat" tone="t-high" label="Open complaints" v={d.kpi.cur.complaints}
+      p={d.kpi.prev.complaints} goodDown series={d.kpi.series.complaints} prevLabel={P.prev} style={iv()}
+      onClick={() => c.openList({ status: "open", sort: "c" }, "Open complaints")} />,
+    ongoing: <Kpi key="ongoing" k="ongoing" icon="doc" tone="t-info" label="Ongoing incidents" v={d.kpi.cur.ongoing} p={d.kpi.prev.ongoing}
+      goodDown series={d.kpi.series.ongoing} prevLabel={P.prev} style={iv()} onClick={() => c.openList({ status: "open", sort: "sev", dir: 1 }, "Ongoing incidents")} />,
+    resolved: <Kpi key="resolved" k="resolved" icon="checkc" tone="t-low" label={`Resolved this ${P.unit.toLowerCase()}`} v={d.kpi.cur.resolved}
+      p={d.kpi.prev.resolved} series={d.kpi.series.resolved} prevLabel={P.prev} style={iv()}
+      onClick={() => c.openList({ status: "Resolved" }, "Resolved incidents")} />
+  };
+  const kpis = L.kpis.filter((k) => KPIS[k]);
+  const addedPins = d.added.pins;
+
+  // grid built from the panels the Collector chose to show
+  const W: Record<string, string> = { map: "1.1fr", brief: "1.1fr", sev: "1.08fr", tasks: "1fr" };
+  const cols = ([["brief", L.panels.brief], ["sev", L.panels.severity], ["tasks", L.panels.tasks]] as const).filter(([, on]) => on).map(([k]) => k);
+  const rowB = [...(L.panels.map ? ["map"] : []), ...cols];
+  const strip = L.panels.snapshot && cols.length > 0;
+  const rowA = [...(L.panels.map ? ["map"] : []), ...(cols.length ? cols.map(() => "snap") : L.panels.snapshot ? ["snap"] : [])];
+  const areaRows = strip ? [rowA, rowB] : [cols.length ? rowB : rowA];
+  const colKeys = (strip || cols.length ? rowB : rowA);
+  const grid: React.CSSProperties = {
+    gridTemplateColumns: colKeys.map((k) => `minmax(0,${W[k] ?? "1fr"})`).join(" "),
+    gridTemplateRows: strip ? "auto minmax(0,1fr)" : "minmax(0,1fr)",
+    gridTemplateAreas: areaRows.map((r) => `"${r.join(" ")}"`).join(" ")
+  };
+
   return (
     <>
-      <section className="hero" style={iv()}>
-        <div>
-          <div className="eyebrow"><span>Chennai District</span>·<span>Collector&apos;s Office</span></div>
-          <h1>District Intelligence <span className="lt">| {c.deptName ?? "Overview"}</span></h1>
-        </div>
-        {zone && (
-          <span className="fchip"><I n="pin" />Zone: {zone.name}
-            <button className="x" onClick={() => c.setZone(null)} aria-label="Clear zone"><I n="x" /></button>
-          </span>
-        )}
-        <DeptSelect c={c} />
-        <span className="hero-sp" />
-        <div className="hero-meta">
-          {P.label}
-          <br />
-          Data as of <b>{fmtTime(d.now)}</b> · {fmtDate(d.now)}
-        </div>
-      </section>
+      {kpis.length > 0 && <section className="kpis" style={{ gridTemplateColumns: `repeat(${kpis.length},minmax(0,1fr))` }}>{kpis.map((k) => KPIS[k])}</section>}
 
-      <section className="kpis">
-        <Kpi k="severe" icon="bell" tone="t-sev" label="Severe Events" tag={tag} v={d.kpi.cur.severe} p={d.kpi.prev.severe}
-          goodDown series={d.kpi.series.severe} prevLabel={P.prev} style={iv()} onClick={() => c.openList({ sev: "Severe" }, "Severe events")} />
-        <Kpi k="complaints" icon="chat" tone="t-high" label="Open Complaints" tag={tag} v={d.kpi.cur.complaints}
-          p={d.kpi.prev.complaints} goodDown series={d.kpi.series.complaints} prevLabel={P.prev} style={iv()}
-          onClick={() => c.openList({ status: "open", sort: "c" }, "Open complaints")} />
-        <Kpi k="ongoing" icon="doc" tone="t-info" label="Ongoing Incidents" tag={tag} v={d.kpi.cur.ongoing} p={d.kpi.prev.ongoing}
-          goodDown series={d.kpi.series.ongoing} prevLabel={P.prev} style={iv()} onClick={() => c.openList({ status: "open" }, "Ongoing incidents")} />
-        <Kpi k="resolved" icon="checkc" tone="t-low" label={`Resolved This ${P.unit}`} tag={tag} v={d.kpi.cur.resolved}
-          p={d.kpi.prev.resolved} series={d.kpi.series.resolved} prevLabel={P.prev} style={iv()}
-          onClick={() => c.openList({ status: "Resolved" }, "Resolved incidents")} />
-      </section>
-
-      <section className="ov-grid">
-        <article className="card a-map" style={iv()}>
-          <div className="ch"><I n="map" />
-            <h3>{zone ? <>{zone.name} <span>(selected zone)</span></> : "Chennai District Map"}{c.deptName && <span> · {c.deptName}</span>}</h3>
-            <select className="sel" style={{ marginLeft: "auto" }} value={d.zone ?? ""} aria-label="Select zone"
-              onChange={(e) => c.setZone(e.target.value ? Number(e.target.value) : null)}>
-              <option value="">Entire Chennai District</option>
-              {d.zoneTable.map((z) => <option key={z.zone} value={z.zone}>{z.name}</option>)}
-            </select>
-          </div>
-          <div className="cb map-cb">
-            <div className="map-wrap">
-              <MapSvg shapes={shapes} zoneCounts={d.map.zoneCounts} pins={d.map.pins} zone={d.zone} layers={c.layers}
-                stations={env.mapStations}
-                onZone={(z) => c.setZone(z)} onPin={(id) => c.openInc(id)} onTip={c.tip} zoneTip={c.zoneTip}
-                onStation={(st) => { c.setEnvSel(st.kind, st.id); c.toast(`${st.name} selected in the ${STATION_STYLE[st.kind].title.toLowerCase()} card.`); }} />
-              <div className="map-leg">
-                {([["severe", "Severe event"], ["complaint", "Complaint"], ["other", "Other incident"]] as const).map(([k, l]) => (
-                  <button key={k} className={c.layers[k] ? "" : "off"} aria-pressed={c.layers[k]} onClick={() => c.toggleLayer(k)}>
-                    <i style={{ background: { severe: "var(--sev)", complaint: "var(--high)", other: "var(--accent)" }[k] }} />
-                    {l} ({d.map.layerCounts[k].toLocaleString("en-IN")})
-                  </button>
-                ))}
-                <button className={c.layers.stations ? "" : "off"} aria-pressed={c.layers.stations} onClick={() => c.toggleLayer("stations")}
-                  title="A = air quality, R = rain gauge, L = lake or reservoir">
-                  <i style={{ background: "linear-gradient(90deg,#16A06A 33%,#1560E8 33% 66%,#0891B2 66%)", borderRadius: 2 }} />
-                  Stations ({env.mapStations.length})
-                </button>
+      <section className="p1" style={grid}>
+        {L.panels.map && (
+          <article className="card a-map" style={iv()}>
+            <div className="ch"><I n="map" />
+              <h3>{c.taluk ? <>{c.talukName(c.taluk)} taluk</> : c.zoneName ? c.zoneName : "Chennai District"}</h3>
+              <div className="seg sm" style={{ marginLeft: "auto" }} role="tablist" aria-label="Map areas">
+                <button className={c.mapMode === "zones" ? "on" : ""} onClick={() => c.setMapMode("zones")} title="GCC zones and wards">Zones</button>
+                <button className={c.mapMode === "taluks" ? "on" : ""} onClick={() => c.setMapMode("taluks")} title="Revenue taluks (wards coloured by taluk)">Taluks</button>
               </div>
-              <MapScale />
             </div>
-          </div>
-        </article>
-
-        <article className="card a-snap" style={iv()}>
-          {d.snapshot.kind === "dept" ? <DeptSnap d={d} c={c} /> : d.snapshot.kind === "area" ? <AreaSnap d={d} c={c} /> : <DistrictSnap d={d} c={c} />}
-        </article>
-
-        <article className="card a-brief" style={iv()}>
-          <div className="ch"><I n="news" /><h3>Today&apos;s Briefing <span>· news · {tag === "District-wide" ? "Chennai District" : tag}</span></h3>
-            <button className="more" onClick={() => c.openNewsAll()}>See more<I n="right" /></button>
-          </div>
-          <div className="cb">
-            {d.news.length ? d.news.slice(0, 4).map((i) => <NewsItem key={i.id} i={i} now={d.now} c={c} />) : <Empty>No news reports in this period.</Empty>}
-          </div>
-        </article>
-
-        <article className="card a-tasks" style={iv()}>
-          <div className="ch"><I n="tasks" /><h3>My Tasks <span>· {tag}</span></h3>
-            <span className="cnt-b">{d.tasks.count}</span>
-            <button className="more" onClick={() => c.openList({ status: "unverified", scope: "all", sort: "sev", dir: 1 }, "Awaiting verification")}>
-              See all<I n="right" />
-            </button>
-          </div>
-          <div className="cb">
-            {d.tasks.rows.length ? d.tasks.rows.slice(0, 5).map((i) => (
-              <div className="task" key={i.id}>
-                <span className={`bic ${sevTone(i.sev)}`} style={{ width: 32, height: 32, borderRadius: "50%" }}><I n={deptIcon(i.dept)} /></span>
-                <div className="tb" onClick={() => c.openInc(i.id)}>
-                  <b>{i.type}</b>
-                  <span className="ln"><I n="pin" />{i.loc ? `${i.loc}, ` : ""}{i.zone_name}</span>
-                  <span className="ln"><I n="clock" />{rel(i.t, d.now)} · {sourceLabel(i)}</span>
+            <div className="map-cb">
+              <div className="map-wrap">
+                <SatMap geo={c.geo} zoneCounts={d.map.zoneCounts} pins={d.map.pins} zone={d.zone} layers={c.layers} stations={env.mapStations}
+                  added={addedPins} onItem={(i) => c.openItem(i)}
+                  mode={c.mapMode} taluk={c.taluk} focus={c.focus}
+                  onZone={(z) => c.setZone(z)} onTaluk={(t) => c.setTaluk(t)} onPin={(id) => c.openInc(id)} zoneTip={c.zoneTip}
+                  onStation={(st) => { c.setEnvSel(st.kind, st.id); c.setPage("environment"); c.toast(`${st.name} selected on the Environment page.`); }} />
+                <div className="map-leg">
+                  {([["severe", "Severe event"], ["complaint", "Complaint"], ["other", "Other incident"]] as const).map(([k, l]) => (
+                    <button key={k} className={c.layers[k] ? "" : "off"} aria-pressed={c.layers[k]} onClick={() => c.toggleLayer(k)}>
+                      <i style={{ background: { severe: "#E5484D", complaint: "#FFA114", other: "#4D8DFF" }[k] }} />
+                      {l} ({d.map.layerCounts[k].toLocaleString("en-IN")})
+                    </button>
+                  ))}
+                  <button className={c.layers.added ? "" : "off"} aria-pressed={c.layers.added} onClick={() => c.toggleLayer("added")}
+                    title="Items from sources you added that name a place in or near Chennai">
+                    <i className="dia" style={{ background: "#8B5CF6" }} />
+                    From added sources ({addedPins.length})
+                  </button>
+                  <button className={c.layers.stations ? "" : "off"} aria-pressed={c.layers.stations} onClick={() => c.toggleLayer("stations")}
+                    title="A = air quality, R = rain gauge, L = lake or reservoir">
+                    <i style={{ background: "linear-gradient(90deg,#12925F 33%,#1560E8 33% 66%,#0891B2 66%)", borderRadius: 3 }} />
+                    Stations ({env.mapStations.length})
+                  </button>
                 </div>
-                <div className="ta">
-                  <button className="kebab" onClick={(e) => c.openMenu(i, e)} aria-label="More actions"><I n="dots" /></button>
-                  <button className="btn sm" onClick={() => c.verify([i])} disabled={c.busyIds.has(i.id)}>Verify</button>
-                </div>
+                {c.mapMode === "zones"
+                  ? <div className="map-heat"><span>Incidents by zone</span><div /><span><em style={{ fontStyle: "normal" }}>Fewer</em><em style={{ fontStyle: "normal" }}>More</em></span></div>
+                  : <div className="map-heat"><span>Colour = revenue taluk</span><span>Click a taluk to filter</span></div>}
               </div>
-            )) : <Empty>All caught up. Nothing waiting for verification.</Empty>}
-          </div>
-        </article>
+            </div>
+          </article>
+        )}
 
-        <article className="card a-recent" style={iv()}><RecentCard d={d} c={c} tag={tag} /></article>
-        <article className="card a-tl" style={iv()}>{zone ? <HistoryCard d={d} c={c} /> : <PriorityCard d={d} c={c} />}</article>
+        {L.panels.snapshot && (
+          <article className="card a-snap" style={iv()}>
+            {d.snapshot.kind === "dept" ? <DeptSnap d={d} c={c} /> : d.snapshot.kind === "area" ? <AreaSnap d={d} c={c} /> : <DistrictSnap d={d} c={c} />}
+          </article>
+        )}
+
+        {L.panels.brief && <article className="card a-brief" style={iv()}><BriefCard d={d} c={c} /></article>}
+
+        {L.panels.severity && <article className="card a-sev" style={iv()}><SeverityCard d={d} c={c} /></article>}
+
+        {L.panels.tasks && <article className="card a-tasks" style={iv()}><TasksCard d={d} c={c} /></article>}
       </section>
-
-      <section className="bottom"><BottomCards d={d} c={c} iv={iv} env={env} /></section>
     </>
   );
 }
 
-export function DeptSelect({ c }: { c: Console }) {
-  return (
-    <label className="dsel">Department
-      <select className="sel" value={c.dept ?? ""} aria-label="Select department" onChange={(e) => c.setDept(e.target.value || null)}>
-        <option value="">All departments</option>
-        {c.depts.map((d) => <option key={d.code} value={d.code}>{d.name}{d.open ? ` (${d.open} open)` : ""}</option>)}
-      </select>
-    </label>
-  );
-}
-
-export function Kpi({ k, icon, tone, label, tag, v, p, goodDown, series, prevLabel, style, onClick }: {
-  k: string; icon: IconName; tone: string; label: string; tag: string; v: number; p: number; goodDown?: boolean;
+export function Kpi({ k, icon, tone, label, v, p, goodDown, series, prevLabel, style, onClick }: {
+  k: string; icon: IconName; tone: string; label: string; v: number; p: number; goodDown?: boolean;
   series: number[]; prevLabel: string; style: React.CSSProperties; onClick: () => void;
 }) {
   const diff = v - p;
@@ -155,9 +127,9 @@ export function Kpi({ k, icon, tone, label, tag, v, p, goodDown, series, prevLab
     <button className="kpi" style={style} onClick={onClick}>
       <span className={`kpi-ic ${tone}`}><I n={icon} /></span>
       <span className="kpi-b">
-        <span className="kpi-l" title={`${label} · ${tag}`}><b>{label}</b></span>
+        <span className="kpi-l">{label}</span>
         <span className="kpi-r">
-          <span className="kpi-c">
+          <span>
             <span className={`kpi-n ${k === "severe" ? "c-sev" : ""}`}><Cnt v={v} /></span>
             <span className={`kpi-d ${cls}`}>
               <em>{same ? "–" : <I n={diff > 0 ? "up" : "down"} />}{same ? "0" : Math.abs(diff).toLocaleString("en-IN")}</em>vs. {prevLabel}
@@ -170,56 +142,207 @@ export function Kpi({ k, icon, tone, label, tag, v, p, goodDown, series, prevLab
   );
 }
 
-function sourceLabel(i: Row) {
-  const first = String(i.channels ?? i.sources ?? "").split("|")[0];
-  return (
-    { citizen_app: "Citizen app", citizen_grievance: "Grievance portal", control_room_112: "Control room 112", fir_walk_in: "Police station",
-      patrol: "Police patrol", media: "News", field_staff: "Field staff", collector_office: "Collector's office", hospital_mis: "Hospital MIS",
-      control_room: "Control room", grievance: "Grievance portal", police: "Police", pwd: "PWD", news: "News" } as Record<string, string>
-  )[first] ?? first;
-}
+// ------------------------------------------------------ severity card --
 
-function DistrictSnap({ d, c }: { d: OverviewData; c: Console }) {
-  const s = d.snapshot as Extract<OverviewData["snapshot"], { kind: "district" }>;
-  const Row = ({ onClick, ic, tone, t, v, sm }: { onClick?: () => void; ic: IconName; tone: string; t: string; v: React.ReactNode; sm?: boolean }) => (
-    <button className="snap-row" onClick={onClick}>
-      <span className={`si ${tone}`}><I n={ic} /></span><span className="t">{t}</span>
-      <span className={`v ${sm ? "sm" : ""}`}>{v}</span><I n="chevr" className="go" />
-    </button>
-  );
+const SEV_WORD: Record<string, string> = { Severe: "severe", High: "high", Medium: "medium", Low: "low" };
+
+function SeverityCard({ d, c }: { d: OverviewData; c: Console }) {
+  const counts = d.severity.counts;
+  const first = SEVS.find((s) => counts[s] > 0) ?? "Severe";
+  const tab = c.sevTab && (counts[c.sevTab] > 0 || c.sevTab === first) ? c.sevTab : first;
+  const rows = d.severity.rows.filter((r) => r.sev === tab);
   return (
     <>
-      <div className="ch"><I n="chart" /><h3>District Snapshot</h3></div>
-      <div className="cb">
-        <Row onClick={c.openZones} ic="pin" tone="t-info" t="Zones monitored" v={<Cnt v={s.zones} />} />
-        <Row onClick={() => s.topZones[0] && c.setZone(s.topZones[0].zone)} ic="alert" tone="t-sev" t="High-priority zones"
-          v={s.topZones.map((z) => z.name).join(", ") || "None"} sm />
-        <Row onClick={c.openDepts} ic="gov" tone="t-violet" t="Active departments" v={<Cnt v={s.activeDepts} />} />
-        <Row onClick={() => c.openList({ status: "critical", scope: "all" }, "Critical items awaiting action")} ic="bolt" tone="t-high"
-          t="Critical, awaiting action" v={<span style={{ color: "var(--sev)" }}><Cnt v={s.critical} /></span>} />
-        <Row onClick={c.openFeeds} ic="clock" tone="t-low" t="Latest data refresh" v={d.exportedAt ? fmtTime(d.exportedAt) : "—"} sm />
+      <div className="ch">
+        <svg className="ic" viewBox="0 0 24 24" style={{ color: "var(--sev)" }} aria-hidden="true"><path d="M12 3l10 18H2z" /><path d="M12 10v5M12 18h.01" /></svg>
+        <h3>Severity-based incidents</h3>
+        <button className="more" onClick={() => c.openList({ status: "open", sev: tab, sort: "sev", dir: 1 }, `${tab} incidents`)}>See all<I n="right" /></button>
+      </div>
+      <div className="sevtabs" role="tablist" aria-label="Severity">
+        {SEVS.map((s) => (
+          <button key={s} role="tab" aria-selected={tab === s} className={`sevtab s-${SEV_WORD[s]}${tab === s ? " on" : ""}`} onClick={() => c.setSevTab(s)}>
+            <b className="num">{counts[s].toLocaleString("en-IN")}</b>
+            <span><i style={{ background: SEV_HEX[s] }} />{s}</span>
+          </button>
+        ))}
+      </div>
+      <div className="fitlist">
+        {rows.length ? rows.map((i) => (
+          <button key={i.id} className={`si-item${c.focus?.id === i.id ? " on" : ""}`} style={{ "--c": SEV_HEX[i.sev] } as React.CSSProperties}
+            onClick={() => { c.highlight(i); c.openInc(i.id); }}>
+            <span className={`si-ic ${sevTone(i.sev)}`}><I n={deptIcon(i.dept)} /></span>
+            <span className="si-main">
+              <span className="si-t" title={fullTitle(i)}>{fullTitle(i)}</span>
+              <span className="si-meta">{[i.zone_name, i.dept_name ?? i.dept, rel(i.t, d.now)].filter(Boolean).join(" · ")}</span>
+              <span className="si-foot">
+                <span className="si-why" title={[...(i.why?.what ?? []), ...(i.why?.why ?? [])].join("\n")}>
+                  <I n="alert" />{[i.why?.what?.[0], i.why?.why?.[0]].filter(Boolean).join(" · ") || i.type}
+                </span>
+                <Sources i={i} />
+              </span>
+            </span>
+          </button>
+        )) : <Empty>No open {tab.toLowerCase()} incidents {c.periodLabel.toLowerCase()}.</Empty>}
       </div>
     </>
   );
 }
 
-function AreaSnap({ d, c }: { d: OverviewData; c: Console }) {
-  const s = d.snapshot as Extract<OverviewData["snapshot"], { kind: "area" }>;
-  const zone = d.zoneTable.find((z) => z.zone === d.zone);
+// ------------------------------------------------------------- tasks --
+
+function TasksCard({ d, c }: { d: OverviewData; c: Console }) {
   return (
     <>
-      <div className="ch"><I n="pin" /><h3>{zone?.name} <span>– Zone Overview</span></h3></div>
-      <div className="cb">
-        <div className="kv">
-          <I n="alert" /><span>Active incidents</span><b className="num"><Cnt v={s.active} /></b><hr />
-          <I n="chat" /><span>Open complaints</span><b className="num"><Cnt v={s.complaints} /></b><hr />
-          <I n="bell" /><span>Severe incidents</span><b className="num" style={{ color: "var(--sev)" }}><Cnt v={s.severe} /></b><hr />
-          <I n={deptIcon(s.keyDept?.code)} /><span>Key department</span>
-          <b>{s.keyDept ? <button className="lnk" onClick={() => c.setDept(s.keyDept.code)}>{s.keyDept.name} ›</button> : "—"}</b><hr />
-          <I n="user" /><span>Nodal officer</span><b>{s.keyDept?.head ?? "—"}</b><hr />
-          <I n="clock" /><span>Latest update</span>
-          <b title={s.latest?.title}>{s.latest ? `${fmtTime(s.latest.at)} · ${s.latest.step}` : "—"}</b>
-        </div>
+      <div className="ch"><I n="tasks" /><h3>My Tasks</h3>
+        <span className="cnt-b">{d.tasks.count}</span>
+        <button className="more" onClick={() => c.openList({ status: "awaiting", scope: "all", sort: "sev", dir: 1 }, "Complaints awaiting your verification")}>
+          See all<I n="right" />
+        </button>
+      </div>
+      <div className="fitlist">
+        {d.tasks.rows.length ? d.tasks.rows.map((i) => (
+          <div className="task" key={i.id} style={{ "--c": SEV_HEX[i.sev] } as React.CSSProperties}>
+            <button className="task-h" onClick={() => c.openInc(i.id)}>
+              <b title={fullTitle(i)}>{fullTitle(i)}</b>
+            </button>
+            <div className="task-act">
+              <em title={`${i.dept_name ?? i.dept} · ${i.officer ?? ""}`}>{i.officer ?? i.dept_name ?? "Department officer"} · {i.action ? rel(i.action.t, d.now) : "awaiting you"}</em>
+              <span title={i.action?.note ?? undefined}>{i.action ? i.action.note || i.action.step : "Reported the work as done."}</span>
+            </div>
+            <div className="task-f">
+              <Sources i={i} />
+              <button className="btn sm plain icon" onClick={() => c.sendBack(i)} disabled={c.busyIds.has(i.id)}
+                title="Send back to the department" aria-label="Send back to the department"><I n="refresh" /></button>
+              <button className="btn sm ok" onClick={() => c.verify([i])} disabled={c.busyIds.has(i.id)}><I n="check" />Verify</button>
+            </div>
+          </div>
+        )) : <Empty>All caught up. No officer action is waiting for your verification.</Empty>}
+      </div>
+    </>
+  );
+}
+
+// ------------------------------------------------------------ snapshot --
+
+function Tile({ onClick, l, v, tone, title, txt }: { onClick?: () => void; l: string; v: React.ReactNode; tone?: string; title?: string; txt?: boolean }) {
+  return (
+    <button className="stile" onClick={onClick} title={title ?? l}>
+      <small>{l}</small>
+      <b className={txt ? "txt" : undefined} style={tone ? { color: tone } : undefined}>{v}</b>
+    </button>
+  );
+}
+
+function SnapTitle({ icon, title, sub, more }: { icon: IconName; title: string; sub: string; more?: React.ReactNode }) {
+  return (
+    <div className="snap-t">
+      <b><I n={icon} />{title}</b>
+      <small>{sub}</small>
+      {more}
+    </div>
+  );
+}
+
+function DistrictSnap({ d, c }: { d: OverviewData; c: Console }) {
+  const s = d.snapshot as Extract<OverviewData["snapshot"], { kind: "district" }>;
+  const ok = d.feeds.filter((f) => f.status === "ok").length;
+  const top = s.topZones.map((z) => z.name);
+  return (
+    <>
+      <SnapTitle icon="chart" title="District Snapshot" sub={c.periodLabel} />
+      <div className="snap">
+        <Tile onClick={c.openZones} l="Zones monitored" v={<Cnt v={s.zones} />} />
+        <Tile onClick={c.openDepts} l="Active depts" v={<Cnt v={s.activeDepts} />} />
+        <Tile onClick={() => c.openList({ status: "critical", scope: "all" }, "Severe, not yet verified")} l="Unverified severe"
+          v={<Cnt v={s.critical} />} tone="var(--sev)" />
+        <Tile onClick={() => s.topZones[0] && c.setZone(s.topZones[0].zone)} l="Hotspot zones" title={top.join(", ")} txt
+          v={top.join(", ") || "None"} tone="var(--accent-2)" />
+        <Tile onClick={c.openFeeds} l="Data feeds" v={`${ok} / ${d.feeds.length}`} tone={ok === d.feeds.length ? "var(--low)" : "var(--high)"} />
+        <Tile onClick={c.openFeeds} l="Last refresh" v={d.exportedAt ? fmtTime(d.exportedAt) : "—"} txt />
+      </div>
+    </>
+  );
+}
+
+export function OfficerCard({ o, label, compact }: { o: Row; label?: string; compact?: boolean }) {
+  const phones = String(o.phone ?? "").split("/").map((p) => p.trim()).filter(Boolean);
+  const initials = String(o.name).replace(/^(Dr\.?|Tmt\.?|Thiru\.?)\s*/i, "").split(/[\s.]+/).filter((x) => x.length > 1).slice(0, 2).map((x) => x[0]).join("");
+  return (
+    <div className="officer" style={compact ? { gridColumn: "span 2" } : undefined}>
+      <span className="avatar">{initials || "GC"}</span>
+      <span style={{ minWidth: 0 }}>
+        {label && <small style={{ fontWeight: 700, color: "var(--accent-2)" }}>{label}</small>}
+        <b>{o.name}</b>
+        <small className="desig" title={o.designation}>{o.designation}</small>
+        <span style={{ display: "flex", flexWrap: "wrap", gap: "2px 10px", marginTop: 3 }}>
+          {phones.slice(0, compact ? 1 : 2).map((p) => <a key={p} href={`tel:${/^\d{8}$/.test(p) ? "044" + p : p.replace(/[^\d+]/g, "")}`}>{p}</a>)}
+          {o.email && <a href={`mailto:${String(o.email).split(/[,\s/]+/)[0]}`} title={String(o.email).split(/[,\s/]+/)[0]}>
+            {compact ? "Email" : String(o.email).split(/[,\s/]+/)[0]}</a>}
+        </span>
+      </span>
+    </div>
+  );
+}
+
+function AreaSnap({ d, c }: { d: OverviewData; c: Console }) {
+  const s = d.snapshot as Extract<OverviewData["snapshot"], { kind: "area" }>;
+  return (
+    <>
+      <SnapTitle icon="pin" title={c.zoneName ?? "Zone"} sub="Zone snapshot" />
+      <div className="snap">
+        {s.zoneOfficer && <OfficerCard o={s.zoneOfficer} label="Zonal officer (GCC)" compact />}
+        <Tile l="Open incidents" v={<Cnt v={s.active} />} />
+        <Tile l="Open complaints" v={<Cnt v={s.complaints} />} />
+        <Tile l="Severe incidents" v={<Cnt v={s.severe} />} tone="var(--sev)" />
+        <Tile l="Busiest department" title={s.keyDept?.name} v={s.keyDept?.name ?? "—"} tone="var(--accent-2)" txt
+          onClick={s.keyDept ? () => c.setDept(s.keyDept.code) : undefined} />
+      </div>
+    </>
+  );
+}
+
+function DeptSnap({ d, c }: { d: OverviewData; c: Console }) {
+  const s = d.snapshot as Extract<OverviewData["snapshot"], { kind: "dept" }>;
+  const dept = s.dept as Row;
+  const head = s.contacts.find((x) => x.dept_code === dept.code);
+  return (
+    <>
+      <SnapTitle icon={deptIcon(dept.code)} title={shortName(dept.name)} sub="Department snapshot"
+        more={<button className="more" onClick={() => c.openContact(dept, s.contacts)}><I n="phone" />Contacts</button>} />
+      <div className="snap">
+        {head ? <OfficerCard o={head} label="Department head (GCC)" compact />
+          : <div className="officer"><span className="avatar">{shortInit(dept.head)}</span><span><b>{dept.head}</b><small>{dept.org} · not on the GCC website</small></span></div>}
+        <Tile l="Open incidents" v={<Cnt v={s.open} />} />
+        <Tile l="Officer-verified, open" v={<Cnt v={s.verified} />} />
+        <Tile l="Past deadline" v={<Cnt v={s.overdue} />} tone="var(--sev)" />
+        <Tile l="Most open in" title={s.topZone?.name} v={s.topZone ? `${s.topZone.name} (${s.topZone.n})` : "—"} tone="var(--accent-2)" txt
+          onClick={s.topZone ? () => c.setZone(s.topZone.zone) : undefined} />
+      </div>
+    </>
+  );
+}
+const shortName = (n: string) => String(n ?? "").replace(/\s*\(.*\)\s*$/, "");
+const shortInit = (s: string) => String(s ?? "").split(/\s+/).filter(Boolean).slice(0, 2).map((x) => x[0]).join("").toUpperCase();
+
+/** Today's Briefing: news the monitor linked to incidents, or items from sources the Collector added. */
+function BriefCard({ d, c }: { d: OverviewData; c: Console }) {
+  const [tab, setTab] = useState<"news" | "added">("news");
+  return (
+    <>
+      <div className="ch"><I n="news" /><h3>Today&apos;s Briefing</h3>
+        <button className="more" onClick={() => (tab === "news" ? c.openNewsAll() : c.openAdded())}>See more<I n="right" /></button>
+      </div>
+      <div className="btabs" role="tablist" aria-label="Briefing source">
+        <button role="tab" aria-selected={tab === "news"} className={tab === "news" ? "on" : ""} onClick={() => setTab("news")}>
+          News</button>
+        <button role="tab" aria-selected={tab === "added"} className={tab === "added" ? "on" : ""} onClick={() => setTab("added")}
+          title={`Items from sources you added, last ${d.added.days} days`}>From added sources <b className="tab-n">{d.added.count}</b></button>
+      </div>
+      <div className="fitlist">
+        {tab === "news"
+          ? d.news.length ? d.news.slice(0, 10).map((i) => <NewsItem key={i.id} i={i} now={d.now} c={c} />) : <Empty>No news reports in this period.</Empty>
+          : d.added.items.length ? d.added.items.slice(0, 10).map((i: Row) => <AddedRow key={i.item_id} i={i} now={d.now} c={c} />)
+            : <Empty>Nothing from added sources in the last {d.added.days} days. <button className="lnk" onClick={() => c.openSources("add")}>Add a source</button></Empty>}
       </div>
     </>
   );
@@ -228,193 +351,87 @@ function AreaSnap({ d, c }: { d: OverviewData; c: Console }) {
 export function NewsItem({ i, now, c }: { i: Row; now: string; c: Console }) {
   const outlets: string[] = i.outletNames ?? [];
   return (
-    <button className="brief" onClick={() => c.openInc(i.id, "news")}>
-      <span className="bic t-info"><I n="news" /></span>
+    <button className="brief" onClick={() => c.openInc(i.id)}>
+      <span className="bic t-high"><I n="news" /></span>
       <span style={{ minWidth: 0, flex: 1 }}>
         <b>{fullTitle(i)}</b>
-        <span className="loc">{i.zone_name ?? "Chennai"} · {i.dept_name ?? i.dept} · {rel(i.t, now)}</span>
-        {i.summary && <p>{i.summary}</p>}
-        <span className="news-ol">Reported by {outlets.length || i.outlets}:
-          {outlets.map((n) => <span key={n} className="chip chip-np">{n}</span>)}
-        </span>
+        <span className="loc">{outlets.length ? outlets.join(", ") : "News"} · {i.zone_name ?? "Chennai"} · {rel(i.t, now)}</span>
+        {i.assigned && <span className="routed"><I n="send" />Sent to {i.assigned.officer_designation ?? i.dept_name}</span>}
       </span>
     </button>
   );
 }
 
-function RecentCard({ d, c, tag }: { d: OverviewData; c: Console; tag: string }) {
-  // "All" also includes police, PWD and hospital records, which the portal and news tabs leave out.
-  const f = c.rtab === "portal" ? isPortal : c.rtab === "news" ? isNews : () => true;
-  const seen = new Set<string>();
-  const rows = d.recent
-    .filter((i) => (seen.has(i.id) ? false : (seen.add(i.id), true)))
-    .filter(f)
-    .sort((a, b) => ms(b.t) - ms(a.t))
-    .slice(0, 8);
-  return (
-    <>
-      <div className="ch">
-        <svg className="ic" viewBox="0 0 24 24" style={{ color: "var(--sev)" }} aria-hidden="true"><path d="M12 3l10 18H2z" /><path d="M12 10v5M12 18h.01" /></svg>
-        <h3>Recent Incidents <span>· {tag}</span></h3>
-        <div className="tabs">
-          {([["all", "All"], ["portal", "Grievance portal"], ["news", "News"]] as const).map(([k, l]) => (
-            <button key={k} className={c.rtab === k ? "on" : ""} onClick={() => c.setRtab(k)}>{l}</button>
-          ))}
-        </div>
-        <button className="more" onClick={() => c.openList({}, "All incidents")}>See more<I n="right" /></button>
-      </div>
-      <div className="cb">
-        <div className="tbl-wrap">
-          <table>
-            <thead><tr><th>#</th><th>Complaint / report</th><th>Source</th><th>{d.zone ? "Location" : "Zone"}</th><th>Department</th><th>Status</th><th>Severity</th><th>Time</th></tr></thead>
-            <tbody>
-              {rows.map((i, n) => (
-                <tr key={i.id} onClick={() => c.openInc(i.id, !isPortal(i) && isNews(i) ? "news" : undefined)}>
-                  <td className="dim">{n + 1}</td>
-                  <td className="ev">{i.type}</td>
-                  <td>{isPortal(i) && <span className="chip chip-portal"><I n="app" />Grievance portal</span>} {isNews(i) && <span className="chip chip-src"><I n="news" />News</span>}
-                    {!isPortal(i) && !isNews(i) && <span className="chip chip-src">{String(i.sources).split("|").map((s: string) => s.toUpperCase()).join(" + ")}</span>}</td>
-                  <td>{d.zone ? i.loc ?? "—" : i.zone_name ?? "—"}</td>
-                  <td>{i.dept_name ?? i.dept}</td>
-                  <td><StChip s={i.status} /></td>
-                  <td><SevChip s={i.sev} /></td>
-                  <td className="dim num">{fmtTime(i.t)}</td>
-                </tr>
-              ))}
-              {!rows.length && <tr><td colSpan={8}><div className="empty">No complaints or news reports</div></td></tr>}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </>
-  );
-}
+// ==================================================== environment & markets ==
 
-function PriorityCard({ d, c }: { d: OverviewData; c: Console }) {
+export function EnvPage({ d, ins, c }: { d: OverviewData; ins: Insights | null; c: Console }) {
+  const env = useEnv(d, c.geo, c);
+  let ix = 0;
+  const iv = () => ({ "--i": ix++ }) as React.CSSProperties;
   return (
-    <>
-      <div className="ch"><I n="clock" /><h3>Priority Incident Timeline</h3>
-        <button className="more" onClick={() => c.openList({ status: "open", sort: "sev", dir: 1 }, "Open incidents")}>See all<I n="right" /></button>
-      </div>
-      <div className="cb">
-        {d.priority.length ? d.priority.map((i) => {
-          const tl = i.timeline as Row[];
-          const nodes = tl.length > 3 ? [tl[0], tl[Math.floor(tl.length / 2)], tl[tl.length - 1]] : tl;
-          const t0 = ms(i.t);
-          const span = Math.max(1, ms(d.now) - t0);
-          const last = nodes.length ? ms(nodes[nodes.length - 1].t) : t0;
-          return (
-            <button className="ptl" key={i.id} onClick={() => c.openInc(i.id)}>
-              <span className="ptl-h"><b>{i.type} – {i.zone_name ?? "Chennai"}</b><SevChip s={i.sev} /><span className="r"><StChip s={i.status} /></span></span>
-              <span className="track">
-                <span className="ln"><i style={{ width: `${Math.min(100, ((last - t0) / span) * 100)}%` }} /></span>
-                {nodes.map((n, k) => (
-                  <span key={k} className={`nd ${k === nodes.length - 1 ? "last" : ""}`}
-                    style={{ left: `${Math.max(6, Math.min(88, ((ms(n.t) - t0) / span) * 88 + 6))}%` }} title={n.label}>
-                    <s />{fmtTime(n.t)}
-                  </span>
-                ))}
-              </span>
-            </button>
-          );
-        }) : <Empty>No open incidents.</Empty>}
-      </div>
-    </>
-  );
-}
-
-function HistoryCard({ d, c }: { d: OverviewData; c: Console }) {
-  const opts = d.priority;
-  if (!opts.length) return (<><div className="ch"><I n="clock" /><h3>Incident History</h3></div><div className="cb"><Empty>No open incidents in this period.</Empty></div></>);
-  const i = opts.find((o) => o.id === c.hist) ?? opts[0];
-  const tl = (i.timeline as Row[]).slice(-5);
-  return (
-    <>
-      <div className="ch"><I n="tasks" /><h3>Incident History</h3>
-        <select className="sel" style={{ marginLeft: "auto", maxWidth: 190 }} value={i.id} onChange={(e) => c.setHist(e.target.value)} aria-label="Choose incident">
-          {opts.map((o) => <option key={o.id} value={o.id}>{o.type} · {o.loc ?? o.zone_name}</option>)}
-        </select>
-      </div>
-      <div className="cb">
-        <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 8, flexWrap: "wrap" }}>
-          <button className="lnk" onClick={() => c.openInc(i.id)} style={{ fontSize: 12.5 }}>{fullTitle(i)} ›</button><SevChip s={i.sev} />
-        </div>
-        <div className="stepper" style={{ gridTemplateColumns: `repeat(${tl.length},minmax(70px,1fr))` }}>
-          <span className="rail" style={{ left: `${50 / tl.length}%`, right: `${50 / tl.length}%` }} />
-          {tl.map((s, k) => (
-            <div className="step" key={k}>
-              <span className="sl">{k + 1}. {s.label}</span>
-              <span className={`sd ${k === 0 ? "first" : ""} ${s.label === "Resolved" || k === tl.length - 1 ? "fin" : ""}`}>{k ? <I n="check" /> : null}</span>
-              <b>{fmtTime(s.t)}</b>
-              <span className="sn">{s.note || s.actor}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-    </>
+    <section className="p2">
+      <RainCard d={d} c={c} env={env} style={iv()} />
+      <AqiCard c={c} d={d} env={env} style={iv()} />
+      <LakeCard c={c} d={d} env={env} style={iv()} />
+      <article className="card" style={{ ...iv(), gridColumn: "span 7" }}><MarketsCard ins={ins} c={c} /></article>
+      <article className="card" style={{ ...iv(), gridColumn: "span 5" }}><StoriesCard d={d} c={c} /></article>
+    </section>
   );
 }
 
 // ------------------------------------------------------- environment --
 
 type Kind = "rain" | "aqi" | "lake";
-interface Picked { kind: Kind; stations: Station[]; label: string; single: Station | null }
+interface Picked { kind: Kind; stations: Station[]; label: string }
 
 /**
  * Which stations each environment card shows. "auto" follows the zone filter:
  * stations inside the zone, else the nearest one (named, with its distance);
  * with no zone it averages every station. The card's picker can override it.
  */
-function useEnv(d: OverviewData, shapes: MapShapes, c: Console) {
+function useEnv(d: OverviewData, geo: MapGeo | null, c: Console) {
   const b = d.bottom;
-  const zoneShape = d.zone ? shapes.zones.find((z) => z.zone === d.zone) : null;
-  const zoneName = zoneShape?.name ?? null;
-  const { proj } = shapes;
+  const z = d.zone && geo ? geo.zones.find((x) => x.zone === d.zone) : null;
+  const zoneName = c.zoneName;
   const km = (st: Station) => {
-    if (!zoneShape) return 0;
-    const x = (st.lon - proj.lon0) * proj.kx, y = (proj.lat0 - st.lat) * proj.ky;
-    return (Math.hypot(x - zoneShape.x, y - zoneShape.y) / proj.ky) * 111;
+    if (!z) return 0;
+    const dy = (st.lat - z.lat) * 111.2, dx = (st.lon - z.lon) * 111.2 * Math.cos((z.lat * Math.PI) / 180);
+    return Math.hypot(dx, dy);
   };
   const pick = (kind: Kind, all: Station[], noun: string): Picked => {
     const sel = c.envSel[kind] ?? "auto";
     const one = all.find((s) => s.id === sel);
-    if (one) return { kind, stations: [one], single: one, label: one.name };
-    if (sel === "all" || !zoneShape || !all.length) {
-      return { kind, stations: all, single: all.length === 1 ? all[0] : null, label: `Average of ${all.length} ${noun}` };
-    }
+    if (one) return { kind, stations: [one], label: one.name };
+    if (sel === "all" || !d.zone || !all.length) return { kind, stations: all, label: all.length === 1 ? all[0].name : `Average of ${all.length} ${noun}` };
     const inside = all.filter((s) => s.zone === d.zone);
-    if (inside.length) {
-      return { kind, stations: inside, single: inside.length === 1 ? inside[0] : null,
-        label: inside.length === 1 ? `${inside[0].name} (in ${zoneName})` : `${inside.length} ${noun} in ${zoneName}` };
-    }
-    const near = [...all].sort((a, z) => km(a) - km(z))[0];
-    return { kind, stations: [near], single: near, label: `Nearest to ${zoneName}: ${near.name}, ${km(near).toFixed(1)} km` };
+    if (inside.length) return { kind, stations: inside, label: inside.length === 1 ? `${inside[0].name} (in ${zoneName})` : `${inside.length} ${noun} in ${zoneName}` };
+    if (!z) return { kind, stations: all, label: `Average of ${all.length} ${noun}` };
+    const near = [...all].sort((a, y) => km(a) - km(y))[0];
+    return { kind, stations: [near], label: `Nearest to ${zoneName}: ${near.name}, ${km(near).toFixed(1)} km` };
   };
-  const rain = pick("rain", b.rain.stations, "rain gauges");
-  const aqi = pick("aqi", b.aqi.stations, "stations");
-  const lake = pick("lake", b.lakes.stations, "lakes");
   const last = (s: Station) => s.series[s.series.length - 1];
   const mapStations: MapStation[] = [
     ...b.aqi.stations.map((s) => ({ id: s.id, name: s.name, kind: "aqi" as const, lat: s.lat, lon: s.lon, label: `AQI ${last(s)}` })),
     ...b.rain.stations.map((s) => ({ id: s.id, name: s.name, kind: "rain" as const, lat: s.lat, lon: s.lon, label: `${last(s)} mm in 24 h` })),
     ...b.lakes.stations.map((s) => ({ id: s.id, name: s.name, kind: "lake" as const, lat: s.lat, lon: s.lon, label: `${last(s)}% full` }))
   ];
-  return { rain, aqi, lake, mapStations };
+  return { rain: pick("rain", b.rain.stations, "rain gauges"), aqi: pick("aqi", b.aqi.stations, "stations"), lake: pick("lake", b.lakes.stations, "lakes"), mapStations };
 }
 type Env = ReturnType<typeof useEnv>;
 
-/** Average several stations' series, aligned on their timestamps. */
-function combine(stations: Station[]): { times: string[]; series: number[] } {
+/** Average several stations' series, aligned on a time key (the day for rain gauges). */
+function combine(stations: Station[], key: (t: string) => string = (t) => t) {
   const by = new Map<string, number[]>();
-  for (const s of stations) s.times.forEach((t, k) => (by.get(t) ?? by.set(t, []).get(t)!).push(s.series[k]));
+  for (const s of stations) s.times.forEach((t, k) => { const kk = key(t); (by.get(kk) ?? by.set(kk, []).get(kk)!).push(s.series[k]); });
   const times = [...by.keys()].sort();
-  return { times, series: times.map((t) => { const v = by.get(t)!; return Math.round((v.reduce((a, x) => a + x, 0) / v.length) * 10) / 10; }) };
+  const series = times.map((t) => { const v = by.get(t)!; return Math.round((v.reduce((a, x) => a + x, 0) / v.length) * 10) / 10; });
+  return { times, series, now: series[series.length - 1], prev: series.length > 1 ? series[series.length - 2] : null };
 }
 
-function StationPicker({ c, kind, all, p }: { c: Console; kind: Kind; all: Station[]; p: Picked }) {
+function StationPicker({ c, kind, all }: { c: Console; kind: Kind; all: Station[] }) {
   return (
-    <select className="sel" style={{ marginLeft: "auto", maxWidth: 118 }} value={c.envSel[kind] ?? "auto"} aria-label="Choose station"
-      onChange={(e) => c.setEnvSel(kind, e.target.value)} title={p.label}>
+    <select className="sel" style={{ marginLeft: "auto", maxWidth: 150 }} value={c.envSel[kind] ?? "auto"} aria-label="Choose station"
+      onChange={(e) => c.setEnvSel(kind, e.target.value)}>
       <option value="auto">{c.zone ? "Selected zone" : "All (average)"}</option>
       {c.zone && <option value="all">All (average)</option>}
       {all.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -422,121 +439,132 @@ function StationPicker({ c, kind, all, p }: { c: Console; kind: Kind; all: Stati
   );
 }
 
-function aqiBand(a: number): [string, string] {
-  return a <= 50 ? ["Good", "t-low"] : a <= 100 ? ["Satisfactory", "t-low"] : a <= 200 ? ["Moderate", "t-med"] : ["Poor", "t-sev"];
-}
-
-const shortStation = (n: string) => n.replace(/^Chennai-/, "").replace(/, Chennai.*$/, "").replace(/ (Lake|Reservoir).*$/, "");
-
-function BottomCards({ d, c, iv, env }: { d: OverviewData; c: Console; iv: () => React.CSSProperties; env: Env }) {
-  const b = d.bottom;
-  const byDept = b.byDept;
-  const dTop = byDept.slice(0, 4).map((r) => ({
-    l: r.l, v: r.v,
-    onClick: () => (c.dept ? c.openList({ q: r.l }, r.l) : r.code && c.setDept(r.code))
-  }));
-  const oth = sum(byDept.slice(4), (r) => r.v);
-  if (oth) dTop.push({ l: "Other", v: oth, onClick: () => (c.dept ? c.openList({}, "All incidents") : c.openDepts()) });
-  const useComplaints = b.byZone.some((r) => r.v > 0);
-  const zRows = b.byZone.map((r) => ({
-    l: r.l, v: useComplaints ? r.v : r.n,
-    onClick: () => (d.zone ? c.openList({ q: r.l }, `Incidents at ${r.l}`) : r.zone && c.setZone(r.zone))
-  }));
-
-  // Rainfall: one gauge -> its daily readings; several -> latest reading per gauge (area-wise).
-  const rp = env.rain;
-  const rainLatest = rp.stations.length ? Math.max(...rp.stations.map((s) => s.series[s.series.length - 1])) : null;
-  const rainAt = rp.stations[0]?.times[rp.stations[0].times.length - 1];
-  const rainBars = rp.single
-    ? { vals: rp.single.series, labels: rp.single.times.map((t) => fmtDate(t)) }
-    : { vals: rp.stations.map((s) => s.series[s.series.length - 1]), labels: rp.stations.map((s) => shortStation(s.name)) };
-  const rainPct = b.rain.prevRainDays ? Math.round(((b.rain.rainDays - b.rain.prevRainDays) / b.rain.prevRainDays) * 100) : null;
-
-  const aq = combine(env.aqi.stations);
-  const aqNow = aq.series[aq.series.length - 1];
-  const band = aqNow != null ? aqiBand(aqNow) : null;
-  const worst = env.aqi.stations.length > 1
-    ? [...env.aqi.stations].sort((a, z) => z.series[z.series.length - 1] - a.series[a.series.length - 1])[0] : null;
-
-  const lk = combine(env.lake.stations);
-  const lNow = lk.series[lk.series.length - 1];
-  const lPct = lk.series.length > 1 ? lNow - lk.series[0] : 0;
-
-  const Label = ({ text }: { text: string }) => (
-    <div className="env-lbl" title={text}><I n="pin" />{text}</div>
-  );
-
+function Trend({ now, prev, unit, upIsBad, since, dec = 1 }: { now: number | null; prev: number | null; unit: string; upIsBad: boolean; since: string; dec?: number }) {
+  if (now == null || prev == null) return null;
+  const d = Math.round((now - prev) * 10 ** dec) / 10 ** dec;
+  const flat = Math.abs(d) < (dec ? 0.1 : 1);
+  const cls = flat ? "flat" : (d > 0) === upIsBad ? "up-bad" : "up-good";
   return (
-    <>
-      <article className="card" style={iv()}>
-        <div className="ch"><I n="chart" /><h3>{c.dept ? "Incidents by Category" : "Complaints by Department"}</h3>
-          <span className="more" style={{ color: "var(--text-3)", fontWeight: 500 }}>{d.periodInfo.label}</span></div>
-        <div className="cb">{dTop.length ? <HBars rows={dTop} /> : <div className="empty">Nothing reported in this period</div>}</div>
-      </article>
-      <article className="card" style={iv()}>
-        <div className="ch"><I n="pin" /><h3>Top {d.zone ? "Locations" : "Zones"} <span>· {useComplaints ? "open complaints" : "open incidents"}</span></h3></div>
-        <div className="cb">{zRows.length ? <HBars rows={zRows} /> : <div className="empty">Nothing open</div>}</div>
-      </article>
-      <article className="card" style={iv()}>
-        <div className="ch"><I n="cloud" /><h3>Rainfall</h3><StationPicker c={c} kind="rain" all={b.rain.stations} p={rp} /></div>
-        <div className="cb">
-          <Label text={rp.label} />
-          <div className="env-top">
-            <span className="big">{rp.single ? <Cnt v={rp.single.series[rp.single.series.length - 1]} dec={1} /> : rainLatest != null ? <Cnt v={rainLatest} dec={1} /> : "—"} <small>mm / 24 h{rp.single ? "" : " (max)"}</small></span>
-            <span className={`delta ${rainPct != null && rainPct > 0 ? "up-bad" : "up-good"}`}>
-              {b.rain.rainDays} rain day{b.rain.rainDays === 1 ? "" : "s"}
-              <small>{rainPct != null ? `${rainPct > 0 ? "+" : ""}${rainPct}% vs. ${d.periodInfo.prev}` : `IMD ${rainAt ? fmtShort(rainAt) : ""}`}</small>
-            </span>
-          </div>
-          <Bars vals={rainBars.vals} labels={rainBars.labels} unit="mm" />
-        </div>
-      </article>
-      <article className="card" style={iv()}>
-        <div className="ch"><I n="wind" /><h3>Air Quality</h3><StationPicker c={c} kind="aqi" all={b.aqi.stations} p={env.aqi} /></div>
-        <div className="cb">
-          <Label text={env.aqi.label} />
-          <div className="env-top">
-            <span className="big"><small>AQI</small> {aqNow != null ? <Cnt v={aqNow} /> : "—"}</span>
-            {worst && <span style={{ fontSize: 11, color: "var(--text-2)", lineHeight: 1.2 }} title={worst.name}>worst: {shortStation(worst.name)} <b className="num">{worst.series[worst.series.length - 1]}</b></span>}
-            {band && <span className={`aqi-b ${band[1]}`}>{band[0]}</span>}
-          </div>
-          <Line vals={aq.series} labels={aq.times.map((t) => fmtTime(t))} color="#16A06A" fmt={(v) => `AQI ${v}`} />
-        </div>
-      </article>
-      <article className="card" style={iv()}>
-        <div className="ch"><I n="drop" /><h3>Reservoir Storage</h3><StationPicker c={c} kind="lake" all={b.lakes.stations} p={env.lake} /></div>
-        <div className="cb">
-          <Label text={env.lake.label} />
-          <div className="env-top">
-            <span className="big">{lNow != null ? <><Cnt v={lNow} dec={1} /> <small>% full</small></> : "—"}</span>
-            <span className={`delta ${lPct >= 0 ? "up-good" : "up-bad"}`}><I n={lPct >= 0 ? "up" : "down"} />{Math.abs(lPct).toFixed(1)} pts<small>over period</small></span>
-          </div>
-          <Line vals={lk.series} labels={lk.times.map((x) => fmtDate(x))} color="#1560E8" fmt={(v) => `${v}% full`} />
-        </div>
-      </article>
-    </>
+    <span className={`trend ${cls}`} title={`Previous reading: ${prev} ${unit}`}>
+      <span className="arr"><I n={flat ? "right" : d > 0 ? "up" : "down"} /></span>
+      <span><b>{flat ? "Steady" : `${d > 0 ? "+" : "−"}${Math.abs(d).toFixed(dec)} ${unit}`}</b><small>vs. {since}</small></span>
+    </span>
   );
 }
 
-function DeptSnap({ d, c }: { d: OverviewData; c: Console }) {
-  const s = d.snapshot as Extract<OverviewData["snapshot"], { kind: "dept" }>;
-  const dept = s.dept as Row;
+function Level({ text, color }: { text: string; color: string }) {
+  return <span className="lvl" style={{ color, background: `${color}1A` }}><i />{text}</span>;
+}
+
+function Scale({ stops, value, max }: { stops: { upto: number; c: string; l: string }[]; value: number | null; max: number }) {
+  let prev = 0;
   return (
-    <>
-      <div className="ch"><I n={deptIcon(dept.code)} /><h3>{dept.name} <span>– Department</span></h3>
-        <button className="more" onClick={() => c.openContact(dept, s.offices)}><I n="phone" />Contact</button>
-      </div>
+    <div className="scale" aria-hidden="true">
+      <div className="bar">{stops.map((s) => { const w = ((s.upto - prev) / max) * 100; prev = s.upto; return <span key={s.l} style={{ background: s.c, flex: `0 0 ${w}%` }} />; })}</div>
+      {value != null && <span className="mk" style={{ left: `${Math.min(100, (value / max) * 100)}%` }} />}
+      <div className="lb">{(() => { let p = 0; return stops.map((s) => { const w = ((s.upto - p) / max) * 100; p = s.upto; return <span key={s.l} style={{ flex: `0 0 ${w}%` }}>{s.l}</span>; }); })()}</div>
+    </div>
+  );
+}
+
+const RAIN_STOPS = [
+  { upto: 15.5, c: "#9FD8B9", l: "Light" }, { upto: 64.4, c: "#F4C542", l: "Moderate" }, { upto: 115.5, c: "#F28A1E", l: "Heavy" }, { upto: 160, c: "#D92D35", l: "Very heavy" }
+];
+function rainLevel(v: number): [string, string, string] {
+  return v < 15.6 ? ["Low", "#12925F", v < 0.1 ? "No rain" : "Light rain"] : v < 64.5 ? ["Moderate", "#B98A00", "Moderate rain"] : v < 115.6 ? ["High", "#E0730D", "Heavy rain"] : ["High", "#D92D35", "Very heavy rain"];
+}
+const AQI_STOPS = [
+  { upto: 50, c: "#3FB67B", l: "Good" }, { upto: 100, c: "#9ACD5A", l: "Satisf." }, { upto: 200, c: "#F4C542", l: "Moderate" },
+  { upto: 300, c: "#F28A1E", l: "Poor" }, { upto: 400, c: "#D92D35", l: "V. poor" }, { upto: 500, c: "#8E1B2A", l: "Severe" }
+];
+function aqiLevel(a: number): [string, string, string] {
+  return a <= 50 ? ["Low", "#12925F", "Good"] : a <= 100 ? ["Low", "#12925F", "Satisfactory"] : a <= 200 ? ["Moderate", "#B98A00", "Moderate"]
+    : a <= 300 ? ["High", "#E0730D", "Poor"] : ["High", "#D92D35", a <= 400 ? "Very poor" : "Severe"];
+}
+const LAKE_STOPS = [{ upto: 30, c: "#E5767A", l: "Low" }, { upto: 70, c: "#F4C542", l: "Normal" }, { upto: 100, c: "#3FB67B", l: "High" }];
+function lakeLevel(p: number): [string, string, string] {
+  return p < 30 ? ["Low", "#D92D35", "Low storage"] : p < 70 ? ["Normal", "#B98A00", "Normal storage"] : p < 92 ? ["High", "#12925F", "Good storage"] : ["High", "#E0730D", "Near full: watch for surplus release"];
+}
+
+function EnvHead({ icon, title, c, kind, all }: { icon: IconName; title: string; c: Console; kind: Kind; all: Station[] }) {
+  return <div className="ch"><I n={icon} /><h3>{title}</h3><StationPicker c={c} kind={kind} all={all} /></div>;
+}
+
+function RainCard({ d, c, env, style }: { d: OverviewData; c: Console; env: Env; style: React.CSSProperties }) {
+  const r = combine(env.rain.stations, (t) => t.slice(0, 10));
+  const lvl = r.now != null ? rainLevel(r.now) : null;
+  const b = d.bottom.rain;
+  const days = r.times.slice(-10), vals = r.series.slice(-10);
+  return (
+    <article className="card env" style={style}>
+      <EnvHead icon="cloud" title="Rainfall" c={c} kind="rain" all={b.stations} />
       <div className="cb">
-        <div className="kv">
-          <I n="user" /><span>Head</span><b title={dept.head}>{dept.head}</b><hr />
-          <I n="esc" /><span>Escalation</span><b title={dept.route} style={{ fontSize: 11.5 }}>{dept.route}</b><hr />
-          <I n="alert" /><span>Open incidents</span><b className="num"><Cnt v={s.open} /></b><hr />
-          <I n="checkc" /><span>Officer-verified, open</span><b className="num"><Cnt v={s.verified} /></b><hr />
-          <I n="clock" /><span>Open past deadline</span><b className="num" style={{ color: "var(--sev)" }}><Cnt v={s.overdue} /></b><hr />
-          <I n="pin" /><span>Most open in</span>
-          <b>{s.topZone ? <button className="lnk" onClick={() => c.setZone(s.topZone.zone)}>{s.topZone.name} ({s.topZone.n}) ›</button> : "—"}</b>
+        <div className="env-lbl"><I n="pin" />{env.rain.label}</div>
+        <div className="env-top">
+          <span className="env-v">{r.now != null ? <Cnt v={r.now} dec={1} /> : "—"}<small>mm / 24 h</small></span>
+          {lvl && <Level text={lvl[0]} color={lvl[1]} />}
+          <Trend now={r.now} prev={r.prev} unit="mm" upIsBad since="previous day" />
         </div>
+        <Scale stops={RAIN_STOPS} value={r.now} max={160} />
+        <div className="env-say">
+          {lvl ? <><b>{lvl[2]}</b> in the last 24 hours{r.now != null && r.times.length ? ` (IMD, ${fmtDate(r.times[r.times.length - 1])})` : ""}. </> : "No readings. "}
+          {b.rainDays} rain day{b.rainDays === 1 ? "" : "s"} in the last {b.days.length} days ({b.prevRainDays} in the {b.days.length} days before).
+        </div>
+        {vals.some((v) => v > 0) ? <Chart kind="bar" vals={vals} labels={days.map((t) => fmtDate(t))} color="#1560E8" fmt={(v) => `${v} mm`} />
+          : <Empty>No rain recorded at {env.rain.stations.length === 1 ? "this gauge" : "these gauges"} in the last {days.length} days.</Empty>}
       </div>
-    </>
+    </article>
+  );
+}
+
+function AqiCard({ d, c, env, style }: { d: OverviewData; c: Console; env: Env; style: React.CSSProperties }) {
+  const a = combine(env.aqi.stations);
+  const lvl = a.now != null ? aqiLevel(a.now) : null;
+  const worst = env.aqi.stations.length > 1 ? [...env.aqi.stations].sort((x, y) => y.series[y.series.length - 1] - x.series[x.series.length - 1])[0] : null;
+  const n = Math.min(a.series.length, 24);
+  return (
+    <article className="card env" style={style}>
+      <EnvHead icon="wind" title="Air quality" c={c} kind="aqi" all={d.bottom.aqi.stations} />
+      <div className="cb">
+        <div className="env-lbl"><I n="pin" />{env.aqi.label}</div>
+        <div className="env-top">
+          <span className="env-v">{a.now != null ? <Cnt v={a.now} /> : "—"}<small>AQI</small></span>
+          {lvl && <Level text={lvl[0]} color={lvl[1]} />}
+          <Trend now={a.now} prev={a.prev} unit="" upIsBad since="previous hour" dec={0} />
+        </div>
+        <Scale stops={AQI_STOPS} value={a.now} max={500} />
+        <div className="env-say">
+          {lvl ? <>Air is <b>{lvl[2].toLowerCase()}</b> (CPCB scale). </> : "No readings. "}
+          {worst && <>Worst now: <b>{worst.name.replace(/^Chennai-/, "").replace(/, Chennai.*$/, "")}</b> at {worst.series[worst.series.length - 1]}.</>}
+        </div>
+        <Chart kind="line" vals={a.series.slice(-n)} labels={a.times.slice(-n).map((t) => fmtTime(t))} color="#12925F" fmt={(v) => `AQI ${v}`}
+          band={{ at: 100, label: "Satisfactory limit" }} />
+      </div>
+    </article>
+  );
+}
+
+function LakeCard({ d, c, env, style }: { d: OverviewData; c: Console; env: Env; style: React.CSSProperties }) {
+  const k = combine(env.lake.stations);
+  const lvl = k.now != null ? lakeLevel(k.now) : null;
+  const first = k.series[0];
+  return (
+    <article className="card env" style={style}>
+      <EnvHead icon="drop" title="Reservoir storage" c={c} kind="lake" all={d.bottom.lakes.stations} />
+      <div className="cb">
+        <div className="env-lbl"><I n="pin" />{env.lake.label}</div>
+        <div className="env-top">
+          <span className="env-v">{k.now != null ? <Cnt v={k.now} dec={1} /> : "—"}<small>% full</small></span>
+          {lvl && <Level text={lvl[0]} color={lvl[1]} />}
+          <Trend now={k.now} prev={k.prev} unit="pts" upIsBad={false} since="previous day" />
+        </div>
+        <Scale stops={LAKE_STOPS} value={k.now} max={100} />
+        <div className="env-say">
+          {lvl ? <><b>{lvl[2]}</b>. </> : "No readings. "}
+          {k.now != null && first != null && k.series.length > 1 && <>{k.now >= first ? "Up" : "Down"} {Math.abs(k.now - first).toFixed(1)} points since {fmtDate(k.times[0])}.</>}
+        </div>
+        <Chart kind="line" vals={k.series} labels={k.times.map((t) => fmtDate(t))} color="#0891B2" fmt={(v) => `${v}% full`} />
+      </div>
+    </article>
   );
 }

@@ -17,8 +17,8 @@ const jakarta = Plus_Jakarta_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "District Collectorate - Chennai | Citizen Services Portal",
-  description: "File and track civic complaints with the Greater Chennai Corporation."
+  title: "District IQ | Chennai Intelligent District Governance Platform",
+  description: "One platform for citizens, department officers and the District Collector of Chennai."
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

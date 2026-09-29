@@ -1,27 +1,24 @@
 import Logo from "@/components/Logo";
 
-export default function Footer() {
+export default function Footer({ compact = false }: { compact?: boolean }) {
   return (
-    <footer className="mt-auto border-t border-canvas-border bg-white">
-      <div className="mx-auto max-w-6xl px-4 py-9 sm:px-6">
-        <div className="flex flex-col items-center gap-4 text-center sm:flex-row sm:justify-between sm:text-left">
-          <div className="flex items-center gap-3">
-            <Logo className="h-9 w-9" />
-            <div>
-              <p className="font-display text-sm font-bold text-ink">District Collectorate, Chennai</p>
-              <p className="text-xs text-ink-subtle">Public Grievance Redressal Portal</p>
-            </div>
-          </div>
-
-          <div className="flex flex-col items-center gap-1 sm:items-end">
-            <p className="text-xs text-ink-subtle">
-              Helpline <span className="font-semibold text-ink">1913</span> &middot; Available 24&times;7
-            </p>
-            <p className="text-2xs text-ink-faint">
-              &copy; {new Date().getFullYear()} Greater Chennai Corporation. All rights reserved.
-            </p>
-          </div>
+    <footer className="mt-auto border-t border-canvas-border bg-white/80 backdrop-blur">
+      <div
+        className={`mx-auto flex max-w-6xl flex-col items-center gap-2 px-4 text-center sm:flex-row sm:justify-between sm:px-6 sm:text-left ${
+          compact ? "py-2.5" : "py-6"
+        }`}
+      >
+        <div className="flex items-center gap-2.5">
+          <Logo className={compact ? "h-6 w-6" : "h-8 w-8"} />
+          <p className="text-[13px] text-ink-muted">
+            <span className="font-display font-bold text-ink">District IQ</span> &middot; Chennai Intelligent District Governance
+            Platform
+          </p>
         </div>
+        <p className="text-[13px] text-ink-subtle">
+          Helpline <span className="font-semibold text-ink">1913</span> &middot; 24&times;7 &middot; &copy; {new Date().getFullYear()}{" "}
+          District Administration, Chennai
+        </p>
       </div>
     </footer>
   );

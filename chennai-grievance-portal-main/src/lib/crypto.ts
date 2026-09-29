@@ -29,3 +29,7 @@ export function maskAadhaar(last4: string | null): string {
   if (!last4) return "";
   return `XXXX-XXXX-${last4}`;
 }
+
+/** AES-256-GCM for other secrets at rest (e.g. credentials of connected sources); same key as above. */
+export const encryptSecret = encryptAadhaar;
+export const decryptSecret = decryptAadhaar;

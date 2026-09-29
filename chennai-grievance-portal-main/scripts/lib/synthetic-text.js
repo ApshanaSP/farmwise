@@ -85,6 +85,126 @@ const LANDMARKS = {
   ]
 };
 
+// ------------------------------------------------ specific observations --
+// What exactly the resident sees, so two complaints about the same kind of problem
+// still read like two different people writing. Slots: {street} {locality} {n} {k} (a handful) {m} (a few
+// feet) {len} (metres) {house} {hour} {days} {day}; filled in generate-synthetic-grievances.js (writeText).
+
+const OPENER = {
+  en: [
+    "I live at door no. {house}, {street}.", "This is about {street} in {locality}.", "Residents of {locality} want to report this.",
+    "Writing on behalf of our residents' welfare association ({n} families).", "I use this stretch of {street} every day.",
+    "I run a small shop on {street}.", "My elderly parents live on {street}.", "We are tenants in the flats on {street}.",
+    "Complaint from the residents of {street}.", "I am a resident of {locality} for many years."
+  ],
+  ta: [
+    "நான் {street}, கதவு எண் {house}-ல் வசிக்கிறேன்.", "{locality} பகுதி மக்கள் சார்பாக இந்த புகார்.", "எங்கள் குடியிருப்போர் நலச் சங்கம் ({n} குடும்பங்கள்) சார்பாக எழுதுகிறேன்.",
+    "{street}-ல் கடை வைத்திருக்கிறேன்.", "தினமும் {street} வழியாகச் செல்கிறேன்."
+  ],
+  tanglish: [
+    "Naan {street} la door no {house} la irukken.", "{locality} people sarbaaga indha complaint.", "{street} la kadai vechurukken.",
+    "Daily {street} vazhiya dhaan poren."
+  ]
+};
+
+const DETAIL = {
+  Garbage: {
+    en: [
+      "The heap is now about {m} feet long and blocks half the road.", "Mostly vegetable waste from the market and plastic covers.",
+      "Construction debris has also been dumped along with household waste.", "Coconut shells and tender coconut waste are piling up near the shop.",
+      "Crows and stray dogs pull the waste across the road every morning.", "The bin has no lid and the waste gets wet in the rain.",
+      "The collection vehicle comes only once in {days} days now.", "Hotel waste is dumped here late at night."
+    ],
+    ta: ["சந்தையின் காய்கறிக் கழிவும் பிளாஸ்டிக் பைகளும் குவிந்துள்ளன.", "கட்டிடக் கழிவும் சேர்த்துக் கொட்டப்படுகிறது.", "காகங்களும் நாய்களும் குப்பையை சாலை முழுவதும் இழுக்கின்றன.", "குப்பை வண்டி {days} நாளுக்கு ஒரு முறைதான் வருகிறது."],
+    tanglish: ["Market kaaikari waste um plastic cover um kuvinjirukku.", "Night la hotel waste konduvandhu kottranga.", "Kuppai vandi {days} naalukku oru thadava dhaan varudhu."]
+  },
+  "Road and Footpath": {
+    en: [
+      "The pit is about {m} feet wide and more than a foot deep.", "Metal plates left after the cable work are sticking out.",
+      "The patch work done last month has already come off.", "Loose gravel on the surface makes bikes skid.",
+      "The footpath slabs are broken and some are missing.", "Water collects in the pit and hides it from motorists.",
+      "An auto overturned here on {day} evening.", "The road was dug for a pipeline and never relaid."
+    ],
+    ta: ["பள்ளம் சுமார் {m} அடி அகலம் உள்ளது.", "கடந்த மாதம் போட்ட ஒட்டுவேலை ஏற்கனவே பெயர்ந்துவிட்டது.", "நடைபாதைக் கற்கள் உடைந்து காணாமல் போயுள்ளன.", "குழாய் பதிக்கத் தோண்டிய சாலை மீண்டும் போடப்படவில்லை."],
+    tanglish: ["Pallam {m} adi agalam irukku.", "Pona maasam potta patch work already poiduchu.", "Pipeline ku thondunadhu appadiye irukku, road podala."]
+  },
+  "Street Light": {
+    en: [
+      "{k} lights in a row near the junction are off.", "The light flickers and goes off after 9 pm.", "The pole is leaning and the wire is hanging low.",
+      "The light was replaced last month but stopped working again.", "The lamp stays on during the day and is off at night.",
+      "Chain snatching happened here last week because it is dark.", "The junction box at the bottom of the pole is open."
+    ],
+    ta: ["சந்திப்பு அருகே வரிசையாக {k} விளக்குகள் எரியவில்லை.", "கம்பம் சாய்ந்து கம்பி தாழ்வாகத் தொங்குகிறது.", "கடந்த வாரம் இருட்டில் செயின் பறிப்பு நடந்தது."],
+    tanglish: ["Junction pakkathula {k} light eriyala.", "Pole saanju wire keezha thongudhu.", "Pona vaaram dark la chain snatching nadandhuchu."]
+  },
+  "Public Health": {
+    en: [
+      "Several children in our lane have had fever this week.", "Mosquito larvae are visible in the stagnant water near the houses.",
+      "The fogging vehicle has not come to our street this month.", "A dead dog has been lying near the corner since {day}.",
+      "Dogs bit {k} people in the last month.", "The drain behind the houses is breeding mosquitoes."
+    ],
+    ta: ["இந்த வாரம் எங்கள் தெருவில் பல குழந்தைகளுக்குக் காய்ச்சல்.", "தேங்கிய நீரில் கொசுப் புழுக்கள் தெரிகின்றன.", "இந்த மாதம் கொசு மருந்து அடிக்க யாரும் வரவில்லை."],
+    tanglish: ["Indha vaaram street la neraya pasangalukku fever.", "Thengi nikkura thanni la kosu puzhu theriyudhu.", "Indha maasam fogging vandi varala."]
+  },
+  "Water Stagnation": {
+    en: [
+      "Water stands knee-deep near the bus stop after every rain.", "The drain inlet is blocked with plastic and silt.",
+      "Sewage is mixing with the rain water and entering houses.", "The water does not drain even two days after the rain.",
+      "The road level was raised and now water enters the houses.", "The stagnant water has turned green and smells."
+    ],
+    ta: ["ஒவ்வொரு மழைக்கும் பேருந்து நிறுத்தம் அருகே முழங்கால் அளவு தண்ணீர் தேங்குகிறது.", "வடிகால் வாய் பிளாஸ்டிக் மற்றும் சேற்றால் அடைபட்டுள்ளது.", "கழிவுநீர் மழைநீருடன் கலந்து வீடுகளுக்குள் வருகிறது."],
+    tanglish: ["Ovvoru mazhaikkum bus stop kitta muttu alavu thanni nikkudhu.", "Drain vaai plastic la block aayirukku.", "Sewage mazhai thanni kooda veetukulla varudhu."]
+  },
+  "Storm Water Drains": {
+    en: [
+      "The trench is open for {len} metres with no barricade or warning light.", "The contractor left the site {days} days ago.",
+      "Excavated soil is dumped on the road.", "There is no way for pedestrians to cross to the other side.",
+      "The slab over the drain is broken at the corner."
+    ],
+    ta: ["{len} மீட்டர் பள்ளம் தடுப்பு இல்லாமல் திறந்து கிடக்கிறது.", "ஒப்பந்ததாரர் {days} நாட்களுக்கு முன் பணியை நிறுத்திவிட்டார்.", "தோண்டிய மண் சாலையில் கொட்டப்பட்டுள்ளது."],
+    tanglish: ["{len} meter pallam barricade illama thirandhu kidakku.", "Contractor {days} naala varala.", "Thondina mann road la kottirukkanga."]
+  },
+  Flood: {
+    en: ["Water has entered the ground floor houses.", "Elderly people in our street need to be shifted.", "Power is cut and the water keeps rising.", "The canal nearby is overflowing into the street."],
+    ta: ["தரைதள வீடுகளுக்குள் தண்ணீர் புகுந்துவிட்டது.", "முதியவர்களை வெளியேற்ற வேண்டும்.", "அருகிலுள்ள கால்வாய் நிரம்பி தெருவுக்குள் வழிகிறது."],
+    tanglish: ["Ground floor veetukulla thanni vandhuduchu.", "Periyavangala shift pannanum.", "Pakkathu canal overflow aagi street kulla varudhu."]
+  },
+  "Park and Playground": {
+    en: ["The swings are broken and the children could get hurt.", "The park gate is locked during morning walking hours.", "The walking track is covered with dry leaves and garbage.", "The lights in the park do not work in the evening."],
+    ta: ["ஊஞ்சல்கள் உடைந்துள்ளன.", "காலை நடைப்பயிற்சி நேரத்தில் பூங்கா கதவு பூட்டியுள்ளது."],
+    tanglish: ["Swing odanjirukku, pasangalukku adipadum.", "Morning walking time la park gate lock pannirukkanga."]
+  },
+  "Public Toilet": {
+    en: ["There is no water supply in the toilet.", "The toilet is locked most of the day.", "The septic tank is overflowing onto the road.", "There is no light inside at night."],
+    ta: ["கழிப்பறையில் தண்ணீர் வசதி இல்லை.", "பெரும்பாலான நேரம் கழிப்பறை பூட்டியுள்ளது."],
+    tanglish: ["Toilet la thanni illa.", "Neraya neram toilet lock pannirukkanga."]
+  },
+  MEGA: {
+    en: ["The half-finished work has narrowed the road to one lane.", "Cables are lying across the new footpath.", "The new footpath is already being used for parking."],
+    ta: ["பாதியில் நிற்கும் பணியால் சாலை ஒற்றை வழியாகிவிட்டது."],
+    tanglish: ["Paadhi velai la road one lane aayiduchu."]
+  },
+  "Air Quality": {
+    en: ["The smoke is worst between 6 and 8 in the evening.", "Children in the school nearby are coughing.", "Dust from the construction site covers the houses."],
+    ta: ["மாலை 6 முதல் 8 மணி வரை புகை அதிகம்.", "கட்டுமானத் தூசி வீடுகளை மூடுகிறது."],
+    tanglish: ["Evening 6 to 8 pugai romba jaasthi.", "Construction dust veedu fulla padiyudhu."]
+  }
+};
+
+const WHEN = {
+  en: ["It is worst in the morning around {hour} am.", "The problem is worse at night.", "It started on {day} and has only got worse.", "It gets worse every time it rains.", "It is like this every weekend."],
+  ta: ["காலை {hour} மணியளவில் மிக மோசமாக உள்ளது.", "இரவில் நிலைமை இன்னும் மோசம்.", "மழை பெய்யும் ஒவ்வொரு முறையும் மோசமாகிறது."],
+  tanglish: ["Morning {hour} mani ku romba mosam.", "Night la innum mosam.", "Mazhai peidha ovvoru thadavaiyum mosam aagudhu."]
+};
+
+const EXTENT = {
+  en: ["About {n} houses on the street are affected.", "The whole stretch of around {len} metres is affected.", "{n} families in our lane face this daily.", "Two schools and a temple are on this stretch."],
+  ta: ["தெருவில் சுமார் {n} வீடுகள் பாதிக்கப்பட்டுள்ளன.", "எங்கள் சந்தில் {n} குடும்பங்கள் தினமும் சிரமப்படுகின்றன."],
+  tanglish: ["Street la {n} veedu affect aagudhu.", "Engal sandhula {n} family daily kashtapadranga."]
+};
+
+const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+
 // -------------------------------------------------------- core sentences --
 // Keyed by sub-type label first, then by category. Each entry: { en, ta, tanglish }.
 
@@ -510,7 +630,7 @@ const COLLECTOR_REJECT_REASONS = [
 ];
 
 module.exports = {
-  DUR, IMPACT, REPEAT, PLEA, LANDMARKS, BY_SUBTYPE, BY_CATEGORY, GENERIC, SHORT_TITLES, SHORT_TITLES_BY_SUBTYPE,
+  DUR, IMPACT, REPEAT, PLEA, LANDMARKS, OPENER, DETAIL, WHEN, EXTENT, DAYS, BY_SUBTYPE, BY_CATEGORY, GENERIC, SHORT_TITLES, SHORT_TITLES_BY_SUBTYPE,
   OTHER, OTHER_DEPT_WEIGHT, JUNK_WORDS, KEYBOARD, NAMES, LAST_NAMES, INITIAL_LETTERS,
   TYPED_STREET_BASES, TYPED_STREET_ORDINALS, TYPED_STREET_SUFFIXES, STREET_TYPES,
   IN_PROGRESS_REMARKS, COMPLETED_REMARKS, VERIFIED_REMARKS,

@@ -16,6 +16,8 @@ export const fmtTime = (s: string | number) =>
   new Date(typeof s === "number" ? s : ms(s)).toLocaleTimeString("en-US", { ...IST, hour: "2-digit", minute: "2-digit", hour12: true });
 export const fmtDate = (s: string | number) =>
   new Date(typeof s === "number" ? s : ms(s)).toLocaleDateString("en-GB", { ...IST, day: "numeric", month: "short" });
+export const fmtDay = (s: string | number) =>
+  new Date(typeof s === "number" ? s : ms(s)).toLocaleDateString("en-GB", { ...IST, weekday: "long", day: "numeric", month: "long" });
 export const fmtShort = (s: string | number) => `${fmtDate(s)}, ${fmtTime(s)}`;
 
 /** Relative to the data's "now" (the pipeline as-of time), so it matches the windows. */
@@ -31,17 +33,13 @@ export function rel(s: string, now: string): string {
 }
 export const pad2 = (n: number) => String(n).padStart(2, "0");
 export const sum = <T,>(a: T[], f: (x: T) => number) => a.reduce((s, x) => s + f(x), 0);
+export const plural = (n: number, one: string, many = one + "s") => `${n.toLocaleString("en-IN")} ${n === 1 ? one : many}`;
 
 // ------------------------------------------------------ severity, status --
 
 export const SEVS = ["Severe", "High", "Medium", "Low"] as const;
-export const SEV_COL: Record<string, string> = {
-  Severe: "var(--sev)",
-  High: "var(--high)",
-  Medium: "var(--med)",
-  Low: "var(--accent)"
-};
-export const CAT_COL: Record<string, string> = { severe: "var(--sev)", complaint: "var(--high)", other: "var(--accent)" };
+export const SEV_HEX: Record<string, string> = { Severe: "#D92D35", High: "#E0730D", Medium: "#B98A00", Low: "#12925F" };
+export const CAT_COL: Record<string, string> = { severe: "#E5484D", complaint: "#FFA114", other: "#4D8DFF" };
 export const sevTone = (s: string) => ({ Severe: "t-sev", High: "t-high", Medium: "t-med", Low: "t-low" })[s] ?? "t-info";
 
 export function SevChip({ s }: { s: string }) {
@@ -85,17 +83,54 @@ export const shortDept = (code: string | null | undefined) => String(code ?? "")
 export const SOURCE_KIND: Record<string, { k: string; ic: IconName; tone: string }> = {
   grievance: { k: "Citizen complaint", ic: "app", tone: "t-info" },
   police: { k: "Police report", ic: "shield", tone: "t-violet" },
-  pwd: { k: "PWD record", ic: "doc", tone: "t-low" },
+  pwd: { k: "PWD field record", ic: "doc", tone: "t-low" },
   hospital: { k: "Hospital report", ic: "health", tone: "t-sev" },
   news: { k: "News report", ic: "news", tone: "t-high" },
   imd: { k: "IMD warning", ic: "cloud", tone: "t-med" },
-  collector: { k: "Collector", ic: "gov", tone: "t-blue" }
+  collector: { k: "Collector", ic: "gov", tone: "t-info" }
 };
-export const isPortal = (i: Row) => String(i.sources ?? "").split("|").includes("grievance");
 export const isNews = (i: Row) => Number(i.outlets) > 0 || String(i.sources ?? "").split("|").includes("news");
 
 /** "Waterlogging – Ward 15" style title, avoiding repetition. */
 export const fullTitle = (i: Row) => i.title || `${i.type} – ${i.loc ?? i.zone_name ?? ""}`;
+
+// ------------------------------------------------------------ sources --
+
+const SRC_ORDER = ["grievance", "police", "pwd", "hospital", "news", "imd"] as const;
+
+/** Reports merged into an incident, by source; the same counts wherever the incident appears. */
+export function sourceItems(i: Row): { k: string; ic: IconName; n: number; label: string; title: string }[] {
+  const s = i.src as Row | undefined;
+  const has = (k: string) => String(i.sources ?? "").split("|").includes(k);
+  const out: { k: string; ic: IconName; n: number; label: string; title: string }[] = [];
+  for (const k of SRC_ORDER) {
+    const n = s ? Number(s[k] ?? 0) : has(k) ? 1 : 0;
+    if (!n) continue;
+    const ic = SOURCE_KIND[k].ic;
+    if (k === "grievance") out.push({ k, ic, n, label: n === 1 ? "Complaint" : "Complaints", title: plural(n, "citizen complaint") });
+    else if (k === "news") {
+      const outs: string[] = s?.outlets ?? [];
+      const o = outs.length || 1;
+      out.push({ k, ic, n: o, label: o === 1 ? "Outlet" : "Outlets", title: outs.length ? `News: ${outs.join(", ")}` : plural(n, "news report") });
+    } else if (k === "police") out.push({ k, ic, n, label: "Police", title: plural(n, "police report") });
+    else if (k === "pwd") out.push({ k, ic, n, label: "PWD", title: plural(n, "PWD field record") });
+    else if (k === "hospital") out.push({ k, ic, n, label: "Hospital", title: plural(n, "hospital report") });
+    else out.push({ k, ic, n, label: "IMD", title: plural(n, "IMD warning") });
+  }
+  return out;
+}
+
+export function Sources({ i }: { i: Row }) {
+  return (
+    <span className="srcs">
+      {sourceItems(i).map((x) => (
+        <span key={x.k} className={`sc sc-${x.k}`} title={x.title}>
+          <I n={x.ic} /><b>{x.n}</b>{x.label}
+        </span>
+      ))}
+    </span>
+  );
+}
 
 // ------------------------------------------------------------------ UI --
 
@@ -108,7 +143,7 @@ export function Empty({ children }: { children: ReactNode }) {
   );
 }
 
-/** Count-up number, as in the design (respects reduced motion). */
+/** Count-up number (respects reduced motion). */
 export function Cnt({ v, dec = 0 }: { v: number; dec?: number }) {
   const [shown, setShown] = useState(v);
   const from = useRef(0);
@@ -131,7 +166,21 @@ export function Cnt({ v, dec = 0 }: { v: number; dec?: number }) {
     raf = requestAnimationFrame(step);
     return () => cancelAnimationFrame(raf);
   }, [v]);
-  return <>{dec ? shown.toFixed(dec) : Math.round(shown) < 100 ? pad2(Math.round(shown)) : Math.round(shown).toLocaleString("en-IN")}</>;
+  return <>{dec ? shown.toFixed(dec) : Math.round(shown).toLocaleString("en-IN")}</>;
+}
+
+/** Element size, for charts drawn at their real pixel size (text stays crisp and readable). */
+export function useSize<T extends HTMLElement>() {
+  const ref = useRef<T>(null);
+  const [size, setSize] = useState({ w: 0, h: 0 });
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([e]) => setSize({ w: Math.round(e.contentRect.width), h: Math.round(e.contentRect.height) }));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  return [ref, size] as const;
 }
 
 // -------------------------------------------------------------- charts --
@@ -140,7 +189,7 @@ let gid = 0;
 const uid = (p: string) => `${p}${++gid}`;
 
 export function Spark({ vals }: { vals: number[] }) {
-  const W = 64, H = 34, n = vals.length;
+  const W = 74, H = 38, n = vals.length;
   const id = useRef(uid("s")).current;
   if (n < 2) return null;
   const mx = Math.max(...vals, 1), mn = Math.min(...vals, 0);
@@ -162,80 +211,89 @@ export function Spark({ vals }: { vals: number[] }) {
   );
 }
 
-function ticks(n: number) {
-  return n <= 7 ? [...Array(n).keys()] : [0, Math.round((n - 1) / 3), Math.round((2 * (n - 1)) / 3), n - 1];
+function ticks(n: number, room: number) {
+  const k = Math.max(2, Math.min(n, Math.floor(room / 78)));
+  if (n <= k) return [...Array(n).keys()];
+  return [...new Set(Array.from({ length: k }, (_, i) => Math.round((i * (n - 1)) / (k - 1))))];
 }
 
-export function Bars({ vals, labels, unit, highlight }: { vals: number[]; labels: string[]; unit: string; highlight?: boolean[] }) {
-  const W = 260, H = 48, n = vals.length;
-  if (!n) return null;
-  const max = Math.max(...vals, 0.1), bw = W / n;
-  return (
-    <svg viewBox={`0 0 ${W} ${H + 14}`} className="mini" role="img" aria-label="Bar chart">
-      {[0.5, 1].map((f) => (
-        <line key={f} className="grid" x1="0" x2={W} y1={H - (H - 6) * f} y2={H - (H - 6) * f} />
-      ))}
-      <line className="axis" x1="0" x2={W} y1={H} y2={H} />
-      {vals.map((v, i) => {
-        const h = Math.max(1.5, (v / max) * (H - 6));
-        return (
-          <rect key={i} className={i === n - 1 || highlight?.[i] ? "bar-last" : "bar"} x={(i * bw + bw * 0.16).toFixed(1)}
-            y={(H - h).toFixed(1)} width={(bw * 0.68).toFixed(1)} height={h.toFixed(1)} rx="1.5"
-            style={{ animationDelay: `${(0.15 + i * 0.015).toFixed(2)}s` }}>
-            <title>{`${labels[i]}: ${v.toFixed(1)} ${unit}`}</title>
-          </rect>
-        );
-      })}
-      {ticks(n).map((i) => (
-        <text key={i} className="tick" x={Math.min(W - 14, Math.max(14, i * bw + bw / 2))} y={H + 12} textAnchor="middle">
-          {labels[i]}
-        </text>
-      ))}
-    </svg>
-  );
+/** Bar or line chart drawn at the container's pixel size, with value labels on hover and the last value marked. */
+export function Chart({ kind, vals, labels, color = "#1560E8", fmt, band }: {
+  kind: "bar" | "line"; vals: number[]; labels: string[]; color?: string; fmt: (v: number) => string;
+  /** optional shaded threshold, e.g. the AQI "satisfactory" ceiling */
+  band?: { at: number; label: string };
+}) {
+  const [ref, { w: W, h: H0 }] = useSize<HTMLDivElement>();
+  const id = useRef(uid("c")).current;
+  const n = vals.length;
+  const H = Math.max(40, H0 - 18), L = 36, R = 8, T = 8;
+  const body = () => {
+    if (!n || W < 60) return null;
+    const mx = Math.max(...vals, band?.at ?? 0, kind === "bar" ? 0.1 : -Infinity);
+    const mn = kind === "bar" ? 0 : Math.min(...vals, band?.at ?? Infinity);
+    const pad = kind === "line" ? (mx - mn || 1) * 0.12 : 0;
+    const top = mx + pad, bot = Math.max(kind === "line" ? -Infinity : 0, mn - pad);
+    const y = (v: number) => T + (1 - (v - bot) / (top - bot || 1)) * (H - T);
+    const iw = W - L - R;
+    const x = (i: number) => (kind === "bar" ? L + (i + 0.5) * (iw / n) : n === 1 ? L + iw / 2 : L + (i * iw) / (n - 1));
+    const grid = [0, 0.5, 1].map((f) => bot + (top - bot) * f);
+    return (
+      <svg width={W} height={H + 18} className="mini" role="img" aria-label="Chart">
+        <defs>
+          <linearGradient id={id} x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0" stopColor={color} stopOpacity=".28" />
+            <stop offset="1" stopColor={color} stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        {grid.map((g, k) => (
+          <g key={k}>
+            <line className="grid" x1={L} x2={W - R} y1={y(g)} y2={y(g)} />
+            <text className="tick" x={L - 6} y={y(g) + 4} textAnchor="end">{top - bot < 6 ? g.toFixed(1) : Math.round(g)}</text>
+          </g>
+        ))}
+        {band && band.at > bot && band.at < top && (
+          <g>
+            <line x1={L} x2={W - R} y1={y(band.at)} y2={y(band.at)} stroke="#E0730D" strokeDasharray="5 4" strokeWidth="1.3" />
+            <text x={W - R} y={y(band.at) - 4} textAnchor="end" style={{ font: "600 11px var(--dic-sans)", fill: "#E0730D" }}>{band.label}</text>
+          </g>
+        )}
+        {kind === "bar"
+          ? vals.map((v, i) => {
+              const bw = Math.min(34, (iw / n) * 0.66);
+              const h = Math.max(2, H - y(v));
+              return (
+                <rect key={i} x={x(i) - bw / 2} y={H - h} width={bw} height={h} rx="3" fill={i === n - 1 ? color : `url(#${id})`}
+                  stroke={color} strokeOpacity={i === n - 1 ? 0 : 0.5}>
+                  <title>{`${labels[i]}: ${fmt(v)}`}</title>
+                </rect>
+              );
+            })
+          : (() => {
+              const d = vals.map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(1)} ${y(v).toFixed(1)}`).join(" ");
+              return (
+                <>
+                  <path d={`${d} L${x(n - 1)} ${H} L${x(0)} ${H}Z`} fill={`url(#${id})`} />
+                  <path className="ln-d" d={d} fill="none" stroke={color} strokeWidth="2.4" strokeLinejoin="round" strokeLinecap="round" />
+                  {vals.map((v, i) => (
+                    <circle key={i} cx={x(i)} cy={y(v)} r={i === n - 1 ? 5 : n <= 31 ? 2.4 : 0} fill={i === n - 1 ? color : "#fff"} stroke={color} strokeWidth="1.6">
+                      <title>{`${labels[i]}: ${fmt(v)}`}</title>
+                    </circle>
+                  ))}
+                </>
+              );
+            })()}
+        <line className="axis" x1={L} x2={W - R} y1={H} y2={H} />
+        {ticks(n, iw).map((i) => {
+          const edge = x(i) - L < 26 ? "start" : W - R - x(i) < 26 ? "end" : "middle";
+          return <text key={i} className="tick" x={edge === "start" ? Math.max(L - 4, x(i) - 6) : edge === "end" ? W - R : x(i)} y={H + 14} textAnchor={edge}>{labels[i]}</text>;
+        })}
+      </svg>
+    );
+  };
+  return <div ref={ref} className="env-chart">{body()}</div>;
 }
 
-export function Line({ vals, labels, color, fmt }: { vals: number[]; labels: string[]; color: string; fmt: (v: number) => string }) {
-  const W = 260, H = 46, n = vals.length;
-  const id = useRef(uid("g")).current;
-  if (!n) return null;
-  const mn = Math.min(...vals), mx = Math.max(...vals), rg = mx - mn || 1;
-  const x = (i: number) => (n === 1 ? W / 2 : 6 + (i * (W - 12)) / (n - 1));
-  const y = (v: number) => 6 + (1 - (v - mn) / rg) * (H - 14);
-  const pts = vals.map((v, i) => [x(i), y(v)]);
-  const d = pts.map((p, i) => `${i ? "L" : "M"}${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(" ");
-  return (
-    <svg viewBox={`0 0 ${W} ${H + 14}`} className="mini" role="img" aria-label="Line chart">
-      <defs>
-        <linearGradient id={id} x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0" stopColor={color} stopOpacity=".3" />
-          <stop offset="1" stopColor={color} stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      {[0.33, 0.66].map((f) => (
-        <line key={f} className="grid" x1="0" x2={W} y1={6 + (H - 14) * f} y2={6 + (H - 14) * f} />
-      ))}
-      <path d={`${d} L${x(n - 1)} ${H} L${x(0)} ${H}Z`} fill={`url(#${id})`} />
-      <path className="ln-d" d={d} fill="none" stroke={color} strokeWidth="2.2" strokeLinejoin="round" strokeLinecap="round" />
-      {n <= 31 ? (
-        pts.map((p, i) => (
-          <circle key={i} cx={p[0]} cy={p[1]} r={i === n - 1 ? 4.5 : 2} fill={i === n - 1 ? color : "#fff"} stroke={color} strokeWidth="1.5">
-            <title>{`${labels[i]}: ${fmt(vals[i])}`}</title>
-          </circle>
-        ))
-      ) : (
-        <circle cx={pts[n - 1][0]} cy={pts[n - 1][1]} r="4.5" fill={color} />
-      )}
-      {ticks(n).map((i) => (
-        <text key={i} className="tick" x={Math.min(W - 14, Math.max(14, x(i)))} y={H + 12} textAnchor="middle">
-          {labels[i]}
-        </text>
-      ))}
-    </svg>
-  );
-}
-
-const BLUES = ["--b1", "--b2", "--b3", "--b4", "--b5"];
+const BLUES = ["#1560E8", "#3B7CF0", "#6699F5", "#8FB5F8", "#B7CFFA"];
 export function HBars({ rows }: { rows: { l: string; v: number; onClick?: () => void }[] }) {
   const max = Math.max(1, ...rows.map((r) => r.v));
   return (
@@ -243,15 +301,43 @@ export function HBars({ rows }: { rows: { l: string; v: number; onClick?: () => 
       {rows.map((r, ix) => (
         <button key={r.l + ix} className="hb-row" onClick={r.onClick} title={`${r.l}: ${r.v}`}>
           <span className="hb-l">{r.l}</span>
+          <span className="hb-v">{r.v.toLocaleString("en-IN")}</span>
           <span className="hb-t">
             <span className="hb-b" style={{
               width: `${((r.v / max) * 100).toFixed(1)}%`,
-              background: `linear-gradient(90deg,var(${BLUES[Math.min(ix, 4)]}),var(${BLUES[Math.min(ix + 1, 4)]}))`
+              background: `linear-gradient(90deg,${BLUES[Math.min(ix, 4)]},${BLUES[Math.min(ix + 1, 4)]})`
             }} />
           </span>
-          <span className="hb-v">{r.v.toLocaleString("en-IN")}</span>
         </button>
       ))}
+    </div>
+  );
+}
+
+export function Donut({ parts }: { parts: { l: string; v: number; c: string; sub?: string }[] }) {
+  const tot = Math.max(1, sum(parts, (p) => p.v));
+  let a = -Math.PI / 2;
+  const R = 56, r = 37, C = 66;
+  const arcs = parts.filter((p) => p.v > 0).map((p) => {
+    const a0 = a, a1 = a + (p.v / tot) * Math.PI * 2 - (parts.length > 1 ? 0.02 : 0);
+    a += (p.v / tot) * Math.PI * 2;
+    const big = a1 - a0 > Math.PI ? 1 : 0;
+    const P = (ang: number, rad: number) => `${(C + rad * Math.cos(ang)).toFixed(2)} ${(C + rad * Math.sin(ang)).toFixed(2)}`;
+    return { p, d: `M${P(a0, R)} A${R} ${R} 0 ${big} 1 ${P(a1, R)} L${P(a1, r)} A${r} ${r} 0 ${big} 0 ${P(a0, r)}Z` };
+  });
+  return (
+    <div className="donut">
+      <svg viewBox="0 0 132 132" role="img" aria-label="Share by severity">
+        {arcs.length === 1 ? <circle cx={C} cy={C} r={(R + r) / 2} fill="none" stroke={arcs[0].p.c} strokeWidth={R - r} />
+          : arcs.map((x) => <path key={x.p.l} d={x.d} fill={x.p.c}><title>{`${x.p.l}: ${x.p.v}`}</title></path>)}
+        <text x={C} y={C - 2} textAnchor="middle" style={{ font: "800 22px var(--dic-display)", fill: "var(--text)" }}>{sum(parts, (p) => p.v).toLocaleString("en-IN")}</text>
+        <text x={C} y={C + 16} textAnchor="middle" style={{ font: "600 11px var(--dic-sans)", fill: "var(--text-3)" }}>incidents</text>
+      </svg>
+      <ul>
+        {parts.map((p) => (
+          <li key={p.l}><i style={{ background: p.c }} />{p.l}<span><b>{p.v.toLocaleString("en-IN")}</b><small>{p.sub}</small></span></li>
+        ))}
+      </ul>
     </div>
   );
 }
