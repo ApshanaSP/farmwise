@@ -1,1 +1,6 @@
 ﻿alert_id,alert_type,issued_at,valid_from,valid_to,covered_location_id,alert_text,source_url,fetch_method,fetched_at
+bulletin-932,bulletin,2026-09-30,,,,Observed Rainfall_30 09 2026,https://chennaifloodmonitor.tn.gov.in/HomePage/GetBulletins,playwright,2026-10-01T09:42:40+05:30
+bulletin-934,bulletin,2026-09-30,,,,Rainfall Forecast_NCEP GFS_Ens75_30 09 2026 00 UTC,https://chennaifloodmonitor.tn.gov.in/HomePage/GetBulletins,playwright,2026-10-01T09:42:40+05:30
+bulletin-935,bulletin,2026-09-30,,,,Lake Inflow Forecast_30 09 2026,https://chennaifloodmonitor.tn.gov.in/HomePage/GetBulletins,playwright,2026-10-01T09:42:40+05:30
+bulletin-936,bulletin,2026-09-30,,,,Lake Water Level Forecast_30 09 2026,https://chennaifloodmonitor.tn.gov.in/HomePage/GetBulletins,playwright,2026-10-01T09:42:40+05:30
+bulletin-933,bulletin,2026-10-30,,,,Rainfall Forecast_ECMWF_Ens75_30 09 2026 00 UTC,https://chennaifloodmonitor.tn.gov.in/HomePage/GetBulletins,playwright,2026-10-01T09:42:40+05:30
