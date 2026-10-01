@@ -32,7 +32,7 @@ async function q<T = Row>(sql: string, params: unknown[] = []): Promise<T[]> {
 }
 
 /** `hours` is the dashboard period; stories are followed over at least 14 and at most 30 days. */
-export interface ThreadScope { hours: number; zone: number | null; dept: string | null; cat: string | null; taluk: string | null }
+export interface ThreadScope { hours: number; /** only stories with a report since then (the period start: daily = today) */ since?: string; zone: number | null; dept: string | null; cat: string | null; taluk: string | null }
 
 interface Doc {
   id: string; story: string | null; inc: string | null; itemId: number | null; publisher: string | null; title: string; url: string | null;
@@ -317,7 +317,7 @@ export async function threads(s: ThreadScope, now: string) {
       b.reports - a.reports || b.last.localeCompare(a.last));
     global.__threadCache = { key, at: Date.now(), threads: all };
   }
-  const shown = all.filter((t) =>
+  const shown = all.filter((t) => (!s.since || t.last >= s.since) &&
     (!s.zone || t.zones.includes(s.zone)) && (!s.dept || t.depts.includes(s.dept)) && (!s.cat || t.cat === s.cat) && (!s.taluk || t.taluks.includes(s.taluk)));
   return { days, total: shown.length, threads: shown.slice(0, 40) };
 }

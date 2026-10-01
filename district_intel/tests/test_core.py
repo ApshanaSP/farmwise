@@ -129,3 +129,35 @@ def test_briefing_verifier_catches_invented_numbers():
     facts = {"kpi": {"incidents": 42, "severe": 5}}
     assert verify("42 incidents, 5 severe.", facts) == []
     assert verify("42 incidents, 17 severe.", facts) == ["17"]
+
+
+def test_imd_missing_reading_is_not_rain():
+    import pandas as pd
+    from dintel.loaders.environment import valid_reading
+    v = pd.Series([0.0, 12.5, 999.0, 9999.0, -99.0, None])
+    assert valid_reading(v, "rainfall_mm").tolist() == [True, True, False, False, False, False]
+
+
+def test_refresh_retries_a_failed_source(monkeypatch, tmp_path):
+    """A feed that fails once (site timeout, laptop asleep) is tried again in the same run."""
+    import subprocess
+    import types
+
+    import run_pipeline as rp
+    from dintel import sync
+
+    monkeypatch.setattr(rp, "STATE", tmp_path / "state.json")
+    monkeypatch.setattr(rp, "RETRY_WAIT_S", 0)
+    monkeypatch.setattr(sync, "write_inputs", lambda s: {"grievance_rain_days": []})
+    calls = {"n": 0}
+
+    def fake_run(cmd, **kw):
+        calls["n"] += 1
+        return types.SimpleNamespace(returncode=0 if calls["n"] == 2 else 1, stdout="", stderr="boom")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    settings = types.SimpleNamespace(raw={"refresh": [{"name": "cpcb", "cwd": ".", "cmd": ["x"], "every_minutes": 1440}]})
+    assert rp.refresh(settings, force=True) == ["cpcb"]
+    st = rp._state()
+    assert calls["n"] == 2 and st["cpcb"]["ok"] and st["cpcb"]["attempts"] == 2
+    assert st["_last_collection"]["failed"] == []

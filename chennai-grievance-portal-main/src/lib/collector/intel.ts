@@ -8,8 +8,9 @@
  * period windows line up with the data even between builds.
  */
 import { RowDataPacket } from "mysql2";
-import intelPool, { ops } from "@/lib/collector/db";
-import { addedItems } from "@/lib/collector/sources";
+import intelPool, { OPS_DB, ops } from "@/lib/collector/db";
+import { addedItems, collectionStatus } from "@/lib/collector/sources";
+import { photoUrl } from "@/lib/officer/photos";
 import { threads } from "@/lib/collector/threads";
 
 type Row = Record<string, any>;
@@ -20,10 +21,10 @@ async function q<T = Row>(sql: string, params: unknown[] = []): Promise<T[]> {
 }
 
 export const PERIODS = {
-  daily: { hours: 24, buckets: 12, unit: "Day", prev: "prev. day", label: "Last 24 hours" },
-  weekly: { hours: 168, buckets: 7, unit: "Week", prev: "prev. week", label: "Last 7 days" },
-  monthly: { hours: 720, buckets: 30, unit: "Month", prev: "prev. month", label: "Last 30 days" },
-  quarterly: { hours: 2160, buckets: 13, unit: "Quarter", prev: "prev. quarter", label: "Last 90 days" }
+  daily: { hours: 24, buckets: 12, unit: "Day", prev: "yesterday", label: "Today", word: "Daily" },
+  weekly: { hours: 168, buckets: 7, unit: "Week", prev: "prev. week", label: "Last 7 days", word: "Weekly" },
+  monthly: { hours: 720, buckets: 30, unit: "Month", prev: "prev. month", label: "Last 30 days", word: "Monthly" },
+  quarterly: { hours: 2160, buckets: 13, unit: "Quarter", prev: "prev. quarter", label: "Last 90 days", word: "Quarterly" }
 } as const;
 export type Period = keyof typeof PERIODS;
 export type Overview = Awaited<ReturnType<typeof overview>>;
@@ -72,7 +73,7 @@ export async function exportMeta(): Promise<Record<string, string>> {
 
 // ------------------------------------------------------------- filters --
 
-interface Scope {
+export interface Scope {
   period: Period;
   zone: number | null;
   dept?: string | null;
@@ -81,15 +82,33 @@ interface Scope {
   offset?: number; // 1 = the previous window
 }
 
+/**
+ * The time window of a period over a timestamp column. Daily is today: the calendar day of
+ * the as-of time, from midnight (offset 1 = yesterday), so nothing from earlier days shows.
+ * Weekly, monthly and quarterly are the last 7, 30 and 90 days. `hours` forces a rolling window.
+ */
+export function periodWindow(period: Period, now: string, col = "i.first_reported_at", off = 0, hours?: number): { sql: string; params: unknown[] } {
+  if (period === "daily" && hours == null) {
+    return off === 0
+      ? { sql: `${col} >= DATE(?) AND ${col} <= ?`, params: [now, now] }
+      : { sql: `${col} >= DATE(?) - INTERVAL ? DAY AND ${col} < DATE(?) - INTERVAL ? DAY`, params: [now, off, now, off - 1] };
+  }
+  const h = hours ?? PERIODS[period].hours;
+  return { sql: `${col} > (? - INTERVAL ? HOUR) AND ${col} <= (? - INTERVAL ? HOUR)`, params: [now, h * (off + 1), now, h * off] };
+}
+
+/** Start of the period as an IST wall-clock string ("YYYY-MM-DD HH:MM:SS"). */
+export function periodSince(period: Period, now: string): string {
+  if (period === "daily") return `${now.slice(0, 10)} 00:00:00`;
+  const t = new Date(now.replace(" ", "T") + "Z").getTime() - PERIODS[period].hours * 3600_000;
+  return new Date(t).toISOString().slice(0, 19).replace("T", " ");
+}
+
 /** WHERE clause over `incidents i` for a period window, zone and department. */
-function scopeWhere(s: Scope, now: string): { sql: string; params: unknown[] } {
-  const h = PERIODS[s.period].hours;
-  const off = s.offset ?? 0;
-  const parts = [
-    `i.first_reported_at > (? - INTERVAL ? HOUR)`,
-    `i.first_reported_at <= (? - INTERVAL ? HOUR)`
-  ];
-  const params: unknown[] = [now, h * (off + 1), now, h * off];
+export function scopeWhere(s: Scope, now: string): { sql: string; params: unknown[] } {
+  const win = periodWindow(s.period, now, "i.first_reported_at", s.offset ?? 0);
+  const parts = [win.sql];
+  const params: unknown[] = [...win.params];
   if (s.zone) {
     parts.push(`i.zone_no = ?`);
     params.push(s.zone);
@@ -110,8 +129,83 @@ function scopeWhere(s: Scope, now: string): { sql: string; params: unknown[] } {
 }
 
 const SEV_RANK = `FIELD(i.severity_level, 'Severe', 'High', 'Medium', 'Low')`;
+/**
+ * Closed-work checks the Collector does personally. The rest (low or medium severity,
+ * one or two complaints, one department, closed near its deadline) are left to the
+ * department head, so My Tasks holds only the closures worth the Collector's time.
+ */
+const FOR_COLLECTOR = `(i.severity_level IN ('Severe', 'High') OR i.citizen_complaints >= 3
+  OR i.attention_reason LIKE '%several departments%' OR i.sources LIKE '%news%'
+  OR (i.severity_level = 'Medium' AND i.priority_reasons LIKE '%resolution over twice%'))`;
+
+/** Which of the FOR_COLLECTOR rules put a task on the Collector's list, in words. */
+function taskBecause(r: Row): string[] {
+  const out: string[] = [];
+  if (Number(r.officer_sent)) out.push("Department sent a completion report");
+  if (r.sev === "Severe" || r.sev === "High") out.push(`${r.sev} severity`);
+  if (Number(r.complaints) >= 3) out.push(`${r.complaints} citizens complained`);
+  if (/several departments/i.test(String(r.attention_reason ?? ""))) out.push("Several departments");
+  if (/news/.test(String(r.sources ?? ""))) out.push("In the news");
+  if (r.sev === "Medium" && /resolution over twice/i.test(String(r.priority_reasons ?? ""))) out.push("Took over twice its deadline");
+  return out;
+}
+
 const DECIDED = (decisions: string) =>
   `EXISTS (SELECT 1 FROM ${ops("collector_decisions")} d WHERE d.incident_id = i.incident_id AND d.decision IN (${decisions}))`;
+
+// ---- Shared with the Department Officer console (src/lib/officer): completion reports officers send.
+// A grievance waits for the Collector when the department's latest officer step is "send" and the
+// Collector has not verified, returned, resolved or rejected it since. Such a report always comes to
+// My Tasks (the officer asked for the Collector's check), whatever the period. Only used once the
+// officer tables exist (npm run setup:officer), so the console behaves exactly as before without them.
+let officerOpsCache: { at: number; ready: boolean } | null = null;
+async function officerOpsReady(): Promise<boolean> {
+  if (officerOpsCache && Date.now() - officerOpsCache.at < 60_000) return officerOpsCache.ready;
+  const r = await q(`SELECT COUNT(*) AS n FROM information_schema.tables WHERE table_schema = ? AND table_name IN ('officer_steps', 'officer_reports')`, [OPS_DB]);
+  officerOpsCache = { at: Date.now(), ready: Number(r[0]?.n) === 2 };
+  return officerOpsCache.ready;
+}
+const SENT_BY_OFFICER = `EXISTS (SELECT 1 FROM ${ops("officer_steps")} s WHERE s.incident_id = i.incident_id AND s.step = 'send'
+    AND NOT EXISTS (SELECT 1 FROM ${ops("officer_steps")} s2 WHERE s2.incident_id = s.incident_id AND (s2.at > s.at OR (s2.at = s.at AND s2.step_id > s.step_id)))
+    AND NOT EXISTS (SELECT 1 FROM ${ops("collector_decisions")} d WHERE d.incident_id = s.incident_id
+                    AND d.decision IN ('verify', 'reject', 'resolve', 'reopen') AND d.decided_at >= s.at))`;
+/** Open and sent to the Collector from the officer console, not yet decided; FALSE without the officer tables. */
+async function sentByOfficer(): Promise<string> {
+  return (await officerOpsReady()) ? `(i.is_open = 1 AND ${SENT_BY_OFFICER})` : "(1 = 0)";
+}
+
+/** The officer's latest completion report per incident, for the task card. */
+async function officerReports(ids: string[]): Promise<Record<string, Row>> {
+  if (!ids.length || !(await officerOpsReady())) return {};
+  const r = await q(
+    `SELECT id, t, note, actor, photos FROM (
+       SELECT incident_id AS id, DATE_FORMAT(sent_at, '%Y-%m-%d %H:%i:%s') AS t, remarks AS note, sent_by AS actor, photos,
+              ROW_NUMBER() OVER (PARTITION BY incident_id ORDER BY sent_at DESC, report_id DESC) rn
+       FROM ${ops("officer_reports")} WHERE incident_id IN (?)) x WHERE rn = 1`,
+    [ids]
+  );
+  return Object.fromEntries(r.map((x) => {
+    const photos: string[] = Array.isArray(x.photos) ? x.photos : JSON.parse(String(x.photos || "[]"));
+    return [x.id, { id: x.id, t: x.t, note: x.note, actor: x.actor, step: "Completion report", photos: photos.length }];
+  }));
+}
+
+/** Every completion report the department sent for one incident, newest first, with its photos. */
+async function officerReportsFull(id: string): Promise<Row[]> {
+  if (!(await officerOpsReady())) return [];
+  const r = await q(
+    `SELECT r.report_id AS rid, r.dept_code, dp.name AS dept_name, r.remarks, r.photo_dir, r.photos, r.sent_by,
+            DATE_FORMAT(r.sent_at, '%Y-%m-%d %H:%i:%s') AS t
+     FROM ${ops("officer_reports")} r LEFT JOIN ref_departments dp ON dp.code = r.dept_code
+     WHERE r.incident_id = ? ORDER BY r.sent_at DESC, r.report_id DESC`,
+    [id]
+  );
+  return r.map((x) => {
+    const names: string[] = Array.isArray(x.photos) ? x.photos : JSON.parse(String(x.photos || "[]"));
+    return { id: Number(x.rid), dept: x.dept_name ?? x.dept_code, remarks: String(x.remarks), by: String(x.sent_by), t: String(x.t),
+      photos: names.map((nm) => photoUrl(String(x.photo_dir), nm)) };
+  });
+}
 
 /** Columns every incident row on the console carries. */
 const ROW = `i.incident_id AS id, i.title, i.category_label AS type, i.category_code AS cat_code, i.family,
@@ -181,31 +275,106 @@ async function withSources<T extends Row>(rows: T[]): Promise<T[]> {
   });
 }
 
+/** An incident in plain words for the Collector. */
+export interface Plain {
+  /** one sentence: what happened and where */
+  summary: string;
+  /** short facts: people affected, injuries, road blocked, nearby school... */
+  facts: string[];
+  /** why the Collector should look at it; empty when the department can handle it alone */
+  attention: string[];
+  needsYou: boolean;
+  /** kept for the PDF and the Markdown briefing: facts and attention */
+  what: string[];
+  why: string[];
+}
+
+const PLACE_WORD: Record<string, string> = { school: "a school", worship: "a place of worship", hospital: "a hospital", bus_stop: "a bus stop" };
+const PEOPLE_WORD: Record<string, string> = { children: "children", elderly: "elderly people" };
+const andList = (a: string[]) => (a.length < 2 ? a.join("") : `${a.slice(0, -1).join(", ")} and ${a[a.length - 1]}`);
+const cap = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
+
 /**
- * Plain-language reasons an incident matters, from the pipeline's scoring notes
- * with the point values removed: what happened, then why it needs attention.
+ * Turns the pipeline's scoring notes into plain words: one sentence on what happened,
+ * a few short facts, and the reasons it needs the Collector. Reasons are listed only
+ * when the incident is open and either serious (severe or high) or has a strong signal
+ * (well past its deadline, needs several departments, in the news with no department
+ * record, deaths); everything else is left to the department and shows no reasons.
  */
-export function explain(r: Row): { what: string[]; why: string[] } {
-  const clean = (s: string) => s.replace(/\s*\([+-]?\d+(\.\d+)?\)\s*$/, "").replace(/^High-risk issue:\s*/i, "").trim();
-  const cap = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
-  const what = String(r.severity_reasons ?? "").split(";").map(clean).filter(Boolean).map(cap);
-  const outlets = r.src?.outlets?.length ?? 0;
-  const why = String(r.priority_reasons ?? "").split(";").slice(1).map((s) => s.trim()).filter(Boolean)
-    .map((s) => (/covered by \d+ news outlets/i.test(s) ? (outlets >= 2 ? `covered by ${outlets} news outlets` : "") : s))
-    .filter(Boolean).map(cap);
-  // Attention flags, skipping the ones that repeat a scoring note already listed.
-  const has = (re: RegExp) => why.some((w) => re.test(w));
-  for (const a of String(r.attention_reason ?? "").split(",").map((s) => s.trim()).filter(Boolean)) {
-    if (/deadline/i.test(a) && has(/target/i)) continue;
-    if (/not verified/i.test(a) && has(/not yet verified/i)) continue;
-    if (/only in the news/i.test(a) && has(/in the news but not/i)) continue;
-    if (/spreading/i.test(a) && has(/new reports in 24 h/i)) continue;
-    why.push(cap(a));
+export function explain(r: Row): Plain {
+  const notes = String(r.severity_reasons ?? "").split(";").map((s) => s.replace(/\s*\([^)]*\)\s*$/, "").trim()).filter(Boolean);
+  const pr = String(r.priority_reasons ?? "").split(";").slice(1).map((s) => s.trim().toLowerCase()).filter(Boolean);
+  const flags = String(r.attention_reason ?? "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
+  const facts: string[] = [];
+  let cause: string | null = null;
+  let m: RegExpMatchArray | null;
+  for (const raw of notes) {
+    const n = raw.toLowerCase();
+    if ((m = n.match(/^(\d+) fatalit/))) facts.push(`${m[1]} ${m[1] === "1" ? "death" : "deaths"}`);
+    else if ((m = n.match(/^(\d+) injured/))) facts.push(`${m[1]} ${m[1] === "1" ? "person" : "people"} injured`);
+    else if ((m = n.match(/^about (\d+) people affected/))) facts.push(`About ${Number(m[1]).toLocaleString("en-IN")} people affected`);
+    else if ((m = n.match(/^road blocked (\d+) min/))) facts.push(`Road blocked for ${m[1]} minutes`);
+    else if (n === "full service disruption") facts.push("Service fully cut off");
+    else if (n === "partial service disruption") facts.push("Service partly disrupted");
+    else if (n === "access blocked") facts.push("Access blocked");
+    else if (n === "traffic obstruction") facts.push("Traffic held up");
+    else if (n === "vulnerable victim") facts.push("Victim is a child, woman or elderly person");
+    else if (n === "weapon involved") facts.push("A weapon was used");
+    else if (n === "describes an immediate hazard") facts.push("Reported as an immediate danger");
+    else if (n === "citizen reports complaining before") facts.push("People had complained about it before");
+    else if (n === "weather emergency") facts.push("During a weather warning");
+    else if (n.startsWith("affects ")) {
+      const k = n.slice(8).split(/,\s*/);
+      const places = k.map((x) => PLACE_WORD[x]).filter(Boolean), people = k.map((x) => PEOPLE_WORD[x]).filter(Boolean);
+      if (places.length) facts.push(`Near ${andList(places)}`);
+      if (people.length) facts.push(`${cap(andList(people))} affected`);
+    } else if (!cause) {
+      const c = n.replace(/^(public-safety or sanitation issue|civic issue|high-risk issue):\s*/, "");
+      if (c && !/^other\b/.test(c)) cause = /^(civic issue|public-safety)/.test(n) ? `complaint about ${c}` : c;
+    }
   }
-  if (Number(r.sla_breached) && Number(r.open) === 1 && !why.some((w) => /target/i.test(w))) why.push("Past its resolution deadline");
-  const seen = new Set<string>();
-  const uniq = (a: string[]) => a.filter((x) => (seen.has(x.toLowerCase()) ? false : (seen.add(x.toLowerCase()), true)));
-  return { what: uniq(what).slice(0, 5), why: uniq(why).slice(0, 6) };
+  if (pr.some((p) => p === "linked to a rain event")) facts.push("During rain");
+
+  // "22Nd Link Street, Indira Nagar, Indira Nagar" + zone: each part once
+  const parts: string[] = [];
+  for (const x of [...String(r.loc ?? "").split(/\s*,\s*/), String(r.zone_name ?? "")]) {
+    if (x && !parts.some((y) => y.toLowerCase() === x.toLowerCase() || y.toLowerCase().includes(`(${x.toLowerCase()}`))) parts.push(x);
+  }
+  const place = parts.join(", ") || "Chennai";
+  const summary = `${cap(cause ?? String(r.type ?? "Incident").toLowerCase())} at ${place}.`;
+
+  // Reasons for the Collector, strongest first.
+  const why: [number, string][] = [];
+  const add = (w: number, s: string) => { if (!why.some(([, x]) => x === s)) why.push([w, s]); };
+  const sev = String(r.sev ?? r.severity_level ?? "");
+  const serious = sev === "Severe" || sev === "High";
+  const deaths = facts.find((f) => /deaths?$/.test(f));
+  if (deaths) add(100, `${deaths.replace(/ deaths?$/, "")} ${/^1 /.test(deaths) ? "person has" : "people have"} died`);
+  for (const p of pr) {
+    if ((m = p.match(/^resolution over twice the (\d+) h target/))) add(90, `Still open at more than twice its ${m[1]}-hour deadline`);
+    else if ((m = p.match(/^resolution past the (\d+) h target/))) add(60, `Past its ${m[1]}-hour deadline`);
+    else if ((m = p.match(/^response (over twice|past) the (\d+) h target/))) add(70, `No response yet within the ${m[2]}-hour target`);
+    else if (p === "not yet verified by an officer" && serious) add(75, "No officer has confirmed it on the ground yet");
+    else if (p.startsWith("in the news but not")) add(70, "In the news, but no department has a record of it");
+    else if ((m = p.match(/^covered by (\d+) news outlets/)) && Number(m[1]) >= 2) add(50, `Reported by ${m[1]} news outlets`);
+    else if ((m = p.match(/^(\d+) citizen complaints/)) && Number(m[1]) >= 3) add(55, `${m[1]} citizens have complained`);
+    else if ((m = p.match(/^(\d+) similar incidents here in (\d+) days/)) && Number(m[1]) >= 5) add(40, `Keeps happening: ${m[1]} similar incidents here in ${m[2]} days`);
+    else if (/new reports in/.test(p)) add(65, "More reports are still coming in");
+  }
+  for (const f of flags) {
+    if (f.includes("several departments")) add(80, "Needs several departments to act together");
+    else if (f.includes("only in the news")) add(70, "In the news, but no department has a record of it");
+    else if (f.includes("not verified") && serious) add(75, "No officer has confirmed it on the ground yet");
+    else if (f.includes("spreading")) add(65, "More reports are still coming in");
+    else if (f.includes("deadline") && !why.some(([, x]) => /deadline/.test(x))) add(60, "Past its deadline");
+  }
+  if (Number(r.breached ?? r.sla_breached) && !why.some(([, x]) => /deadline/.test(x))) add(60, "Past its deadline");
+  why.sort((a, b) => b[0] - a[0]);
+  const open = Number(r.open ?? 1) === 1;
+  const needsYou = open && why.length > 0 && (serious || why[0][0] >= 70);
+  const attention = needsYou ? why.slice(0, 3).map(([, s]) => s) : [];
+  const shortFacts = facts.slice(0, 4);
+  return { summary, facts: shortFacts, attention, needsYou, what: [summary, ...shortFacts], why: attention };
 }
 
 // ------------------------------------------------ news complaints routing --
@@ -354,13 +523,14 @@ async function kpiBlock(s: Scope, now: string) {
   const cols = `SUM(i.severity_level = 'Severe') AS severe, SUM(CASE WHEN i.is_open = 1 THEN i.citizen_complaints ELSE 0 END) AS complaints,
     SUM(i.is_open) AS ongoing, SUM(i.is_open = 0 AND i.status_std = 'Resolved') AS resolved`;
   const bucketSecs = (p.hours * 3600) / p.buckets;
+  const since = periodSince(s.period, now); // daily: buckets of 2 hours from midnight
   const [c, pv, series] = await Promise.all([
     q(`SELECT ${cols} FROM incidents i WHERE ${cur.sql}`, cur.params),
     q(`SELECT ${cols} FROM incidents i WHERE ${prev.sql}`, prev.params),
     q(
-      `SELECT FLOOR(TIMESTAMPDIFF(SECOND, ? - INTERVAL ? HOUR, i.first_reported_at) / ?) AS b, ${cols}
+      `SELECT FLOOR(TIMESTAMPDIFF(SECOND, ?, i.first_reported_at) / ?) AS b, ${cols}
        FROM incidents i WHERE ${cur.sql} GROUP BY b`,
-      [now, p.hours, bucketSecs, ...cur.params]
+      [since, bucketSecs, ...cur.params]
     )
   ]);
   const keys = Object.keys(c[0] ?? {});
@@ -372,9 +542,14 @@ async function kpiBlock(s: Scope, now: string) {
   };
 }
 
-export async function overview(period: Period, zone: number | null, dept: string | null = null, focus: Focus = {}) {
+/**
+ * `route: false` skips routing news complaints to departments (a write to the ops tables),
+ * for read-only callers such as the assistant; the console, open behind it, routes them.
+ */
+export async function overview(period: Period, zone: number | null, dept: string | null = null, focus: Focus = {},
+  opts: { route?: boolean } = {}) {
   const now = await asOf();
-  await routeNewsComplaints(now);
+  if (opts.route !== false) await routeNewsComplaints(now);
   const cat = focus.cat ?? null, taluk = focus.taluk ?? null;
   const s: Scope = { period, zone, dept, cat, taluk };
   const w = scopeWhere(s, now);
@@ -384,11 +559,18 @@ export async function overview(period: Period, zone: number | null, dept: string
   // The department list follows zone and period, never the department filter itself.
   const nd = scopeWhere({ period, zone, cat, taluk }, now);
   // My Tasks: citizen complaints where the department officer reported the work done
-  // and asked for the Collector's verification, with no Collector decision yet.
-  const qWhere = `i.is_open = 1 AND i.awaiting_collector = 1 AND i.citizen_complaints > 0
-    ${zone ? "AND i.zone_no = ?" : ""} ${dept ? "AND i.lead_dept = ?" : ""} ${cat ? "AND i.category_code = ?" : ""}
-    ${taluk ? "AND i.taluk_code = ?" : ""} AND NOT ${DECIDED("'verify','reject','resolve','reopen'")}`;
-  const qParams = [...(zone ? [zone] : []), ...(dept ? [dept] : []), ...(cat ? [cat] : []), ...(taluk ? [taluk] : [])];
+  // and asked for verification, with no Collector decision yet, and that meet the
+  // Collector's criteria (FOR_COLLECTOR); the others are counted as left to departments.
+  // Completion reports sent from the officer console always come to My Tasks until the Collector decides.
+  const tw = periodWindow(period, now, "i.last_update_at");
+  const sent = await sentByOfficer();
+  const inScope = `${zone ? "AND i.zone_no = ?" : ""} ${dept ? "AND i.lead_dept = ?" : ""} ${cat ? "AND i.category_code = ?" : ""}
+    ${taluk ? "AND i.taluk_code = ?" : ""}`;
+  const scopeParams = [...(zone ? [zone] : []), ...(dept ? [dept] : []), ...(cat ? [cat] : []), ...(taluk ? [taluk] : [])];
+  const awaitCore = `${tw.sql} AND i.is_open = 1 AND i.awaiting_collector = 1 AND i.citizen_complaints > 0
+    AND NOT ${DECIDED("'verify','reject','resolve','reopen'")}`;
+  const qWhere = `1 = 1 ${inScope} AND ((${awaitCore} AND ${FOR_COLLECTOR}) OR ${sent})`;
+  const qParams = [...scopeParams, ...tw.params];
   // Severity-based incidents: open incidents in the period, minus news complaints sent to a department.
   const sevWhere = `${w.sql} AND i.is_open = 1 AND NOT ${ROUTED}`;
 
@@ -421,8 +603,10 @@ export async function overview(period: Period, zone: number | null, dept: string
       w.params
     ),
     q(`SELECT ${ROW} ${FROM} WHERE ${w.sql} AND i.outlet_count > 0 ORDER BY i.first_reported_at DESC LIMIT 24`, w.params),
-    q(`SELECT ${ROW} ${FROM} WHERE ${qWhere} ORDER BY ${SEV_RANK}, i.last_update_at ASC LIMIT 12`, qParams),
-    q(`SELECT COUNT(*) AS n FROM incidents i WHERE ${qWhere}`, qParams),
+    q(`SELECT ${ROW}, ${sent} AS officer_sent ${FROM} WHERE ${qWhere} ORDER BY officer_sent DESC, ${SEV_RANK}, i.last_update_at ASC LIMIT 12`, qParams),
+    q(`SELECT COALESCE(SUM((${awaitCore} AND ${FOR_COLLECTOR}) OR ${sent}), 0) AS n,
+              COALESCE(SUM(${awaitCore} AND NOT ${FOR_COLLECTOR} AND NOT ${sent}), 0) AS left_to_depts
+       FROM incidents i WHERE 1 = 1 ${inScope}`, [...tw.params, ...tw.params, ...scopeParams]),
     q(
       `SELECT * FROM (SELECT ${ROW}, ROW_NUMBER() OVER (PARTITION BY i.severity_level
          ORDER BY i.priority_score DESC, i.first_reported_at DESC) AS rn ${FROM} WHERE ${sevWhere}) x
@@ -459,8 +643,8 @@ export async function overview(period: Period, zone: number | null, dept: string
     ),
     q(
       `SELECT ${ROW} ${FROM} WHERE i.is_open = 1 AND i.severity_level IN ('Severe', 'High') AND NOT ${ROUTED}
-       AND i.first_reported_at > (? - INTERVAL 24 HOUR) ORDER BY ${SEV_RANK}, i.citizen_complaints DESC LIMIT 6`,
-      [now]
+       AND ${periodWindow(period, now).sql} ORDER BY ${SEV_RANK}, i.citizen_complaints DESC LIMIT 6`,
+      periodWindow(period, now).params
     ),
     q(
       `SELECT i.lead_dept AS code, dp.name, dp.head, SUM(i.is_open) AS open, COUNT(*) AS n,
@@ -476,11 +660,11 @@ export async function overview(period: Period, zone: number | null, dept: string
       zone ? [zone] : []
     ),
     environment(period, now),
-    threads({ hours: p.hours, zone, dept, cat, taluk }, now),
+    threads({ hours: p.hours, zone, dept, cat, taluk, since: periodSince(period, now) }, now),
     // Severity mix of everything reported in the period (open and closed), for page 2.
     q(`SELECT i.severity_level AS sev, COUNT(*) AS n, SUM(i.is_open) AS open FROM incidents i WHERE ${w.sql} GROUP BY i.severity_level`, w.params),
     // Items from sources the Collector added: at least the last 7 days, so a quiet day still shows them.
-    addedItems({ now, days: Math.max(7, Math.round(p.hours / 24)), zone, dept, cat, taluk })
+    addedItems({ now, days: Math.max(1, Math.round(p.hours / 24)), since: periodSince(period, now), zone, dept, cat, taluk })
   ]);
 
   const [taskRows, newsRows, sevList, bellRows] = await Promise.all([
@@ -489,8 +673,9 @@ export async function overview(period: Period, zone: number | null, dept: string
     withDecisions(sevRows).then(withSources),
     withDecisions(bell).then(withSources)
   ]);
-  const [actionsTaken, assigned] = await Promise.all([
+  const [actionsTaken, reportsSent, assigned] = await Promise.all([
     officerActions(taskRows.map((r) => r.id)),
+    officerReports(taskRows.filter((r) => Number(r.officer_sent)).map((r) => r.id)),
     assignmentsFor(newsRows.map((r) => r.id))
   ]);
   const num = (rows: Row[]) => Object.fromEntries(SEV_LEVELS.map((k) => [k, Number(rows.find((r) => r.sev === k)?.n ?? 0)]));
@@ -503,6 +688,8 @@ export async function overview(period: Period, zone: number | null, dept: string
     cat,
     taluk,
     exportedAt: meta.exported_at ?? null,
+    /** did today's 6:00 AM collection run, and which feeds are still missing */
+    collection: collectionStatus(),
     kpi,
     zoneTable: zoneTable.map((z) => ({ zone: z.zone, name: z.name, n: Number(z.n), open: Number(z.open),
       complaints: Number(z.complaints), severe: Number(z.severe) })),
@@ -521,7 +708,11 @@ export async function overview(period: Period, zone: number | null, dept: string
     },
     snapshot: snap,
     news: newsRows.map((r) => ({ ...r, outletNames: r.src?.outlets ?? [], assigned: assigned[r.id] ?? null }) as Row),
-    tasks: { rows: taskRows.map((r) => ({ ...r, action: actionsTaken[r.id] ?? null }) as Row), count: Number(taskCount[0]?.n ?? 0) },
+    tasks: {
+      rows: taskRows.map((r) => ({ ...r, action: reportsSent[r.id] ?? actionsTaken[r.id] ?? null, because: taskBecause(r) }) as Row),
+      count: Number(taskCount[0]?.n ?? 0),
+      leftToDepts: Number(taskCount[0]?.left_to_depts ?? 0)
+    },
     severity: {
       counts: num(sevCounts) as Record<string, number>,
       rows: sevList.map((r) => ({ ...r, why: explain(r) }) as Row)
@@ -562,10 +753,27 @@ async function officerActions(ids: string[]): Promise<Record<string, Row>> {
   return Object.fromEntries(r.map((x) => [x.id, x]));
 }
 
+/**
+ * Numbers every snapshot shows, none of which repeat the KPI tiles above it: open severe or
+ * high incidents, open incidents past their deadline, and open incidents seen only in the news
+ * (no department has a record of them), all for incidents reported in the period and scope.
+ */
+async function snapCommon(s: Scope, now: string) {
+  const w = scopeWhere(s, now);
+  const [r] = await q(
+    `SELECT COALESCE(SUM(i.is_open = 1 AND i.severity_level IN ('Severe', 'High')), 0) AS serious,
+            COALESCE(SUM(i.is_open = 1 AND i.sla_breached = 1), 0) AS overdue,
+            COALESCE(SUM(i.is_open = 1 AND i.media_only = 1), 0) AS news_only
+     FROM incidents i WHERE ${w.sql}`,
+    w.params
+  );
+  return { serious: Number(r?.serious ?? 0), overdue: Number(r?.overdue ?? 0), newsOnly: Number(r?.news_only ?? 0) };
+}
+
 /** Snapshot card when a department is selected: who runs it and where its load sits. */
 async function deptSnapshot(code: string, s: Scope, now: string) {
   const w = scopeWhere(s, now);
-  const [info, k, topZone, contacts] = await Promise.all([
+  const [info, k, topZone, contacts, common] = await Promise.all([
     q(`SELECT code, name, org, head, route FROM ref_departments WHERE code = ?`, [code]),
     q(
       `SELECT SUM(i.is_open) AS open, SUM(i.is_open = 1 AND i.verified = 1) AS verified,
@@ -574,15 +782,18 @@ async function deptSnapshot(code: string, s: Scope, now: string) {
       w.params
     ),
     q(
+      // same period and scope as the rest of the snapshot
       `SELECT i.zone_no AS zone, i.zone_name AS name, COUNT(*) AS n FROM incidents i
-       WHERE i.lead_dept = ? AND i.is_open = 1 AND i.zone_no IS NOT NULL ${s.zone ? "AND i.zone_no = ?" : ""}
+       WHERE ${w.sql} AND i.is_open = 1 AND i.zone_no IS NOT NULL
        GROUP BY i.zone_no, i.zone_name ORDER BY n DESC LIMIT 1`,
-      s.zone ? [code, s.zone] : [code]
+      w.params
     ),
-    contactsFor(code, s.zone)
+    contactsFor(code, s.zone),
+    snapCommon(s, now)
   ]);
   return {
     kind: "dept" as const,
+    ...common,
     dept: info[0] ?? { code, name: code, org: "", head: "", route: "" },
     open: Number(k[0]?.open ?? 0),
     verified: Number(k[0]?.verified ?? 0),
@@ -652,12 +863,12 @@ export interface Station { id: string; name: string; zone: number | null; lat: n
 
 async function districtSnapshot(s: Scope, now: string) {
   const w = scopeWhere(s, now);
-  const [top, depts, crit, zones] = await Promise.all([
+  const [top, depts, crit, zones, common, taluk] = await Promise.all([
     q(
       `SELECT i.zone_no AS zone, i.zone_name AS name,
               SUM(CASE i.severity_level WHEN 'Severe' THEN 3 WHEN 'High' THEN 1 ELSE 0 END) AS score
        FROM incidents i WHERE ${w.sql} AND i.zone_no IS NOT NULL GROUP BY i.zone_no, i.zone_name
-       HAVING score > 0 ORDER BY score DESC LIMIT 2`,
+       HAVING score > 0 ORDER BY score DESC, SUM(i.severity_level = 'Severe') DESC LIMIT 2`,
       w.params
     ),
     q(`SELECT COUNT(DISTINCT i.lead_dept) AS n FROM incidents i WHERE ${w.sql} AND i.is_open = 1`, w.params),
@@ -665,10 +876,16 @@ async function districtSnapshot(s: Scope, now: string) {
       `SELECT COUNT(*) AS n FROM incidents i WHERE i.is_open = 1 AND i.severity_level = 'Severe'
        AND (i.verified = 0 OR i.awaiting_collector = 1) AND NOT ${DECIDED("'verify','reject','resolve'")}`
     ),
-    q(`SELECT COUNT(DISTINCT zone_no) AS n FROM ref_wards`)
+    q(`SELECT COUNT(DISTINCT zone_no) AS n FROM ref_wards`),
+    snapCommon(s, now),
+    // the taluk with the most open incidents among those reported in the period
+    q(`SELECT t.name, COUNT(*) AS n FROM incidents i JOIN ref_taluks t ON t.taluk_code = i.taluk_code
+       WHERE ${w.sql} AND i.is_open = 1 GROUP BY t.name ORDER BY n DESC LIMIT 1`, w.params)
   ]);
   return {
     kind: "district" as const,
+    ...common,
+    topTaluk: taluk[0] ? { name: String(taluk[0].name), n: Number(taluk[0].n) } : null,
     zones: Number(zones[0]?.n ?? 0),
     topZones: top.map((t) => ({ zone: t.zone, name: t.name })),
     activeDepts: Number(depts[0]?.n ?? 0),
@@ -678,7 +895,7 @@ async function districtSnapshot(s: Scope, now: string) {
 
 async function areaSnapshot(zone: number, s: Scope, now: string) {
   const w = scopeWhere(s, now);
-  const [k, keyDept, latest, zoneOfficer] = await Promise.all([
+  const [k, keyDept, latest, zoneOfficer, common] = await Promise.all([
     q(
       `SELECT SUM(i.is_open) AS active, SUM(CASE WHEN i.is_open = 1 THEN i.citizen_complaints ELSE 0 END) AS complaints,
               SUM(i.severity_level = 'Severe') AS severe FROM incidents i WHERE ${w.sql}`,
@@ -686,8 +903,8 @@ async function areaSnapshot(zone: number, s: Scope, now: string) {
     ),
     q(
       `SELECT i.lead_dept AS code, dp.name, dp.head, COUNT(*) AS n ${FROM}
-       WHERE i.zone_no = ? AND i.is_open = 1 GROUP BY i.lead_dept, dp.name, dp.head ORDER BY n DESC LIMIT 1`,
-      [zone]
+       WHERE ${w.sql} AND i.is_open = 1 GROUP BY i.lead_dept, dp.name, dp.head ORDER BY n DESC LIMIT 1`,
+      w.params
     ),
     q(
       `SELECT DATE_FORMAT(t.at, '%Y-%m-%d %H:%i:%s') AS at, t.step, t.note, i.title
@@ -695,10 +912,12 @@ async function areaSnapshot(zone: number, s: Scope, now: string) {
        WHERE i.zone_no = ? AND i.is_open = 1 AND t.at <= ? ORDER BY t.at DESC LIMIT 1`,
       [zone, now]
     ),
-    contactsFor(null, zone)
+    contactsFor(null, zone),
+    snapCommon(s, now)
   ]);
   return {
     kind: "area" as const,
+    ...common,
     active: Number(k[0]?.active ?? 0),
     complaints: Number(k[0]?.complaints ?? 0),
     severe: Number(k[0]?.severe ?? 0),
@@ -730,7 +949,7 @@ export async function incident(id: string) {
   );
   if (!inc) return null;
 
-  const [members, documents, decisions, contacts, assigned, src] = await Promise.all([
+  const [members, documents, decisions, contacts, assigned, src, deptReports] = await Promise.all([
     q(
       `SELECT m.event_id, m.source, m.channel, DATE_FORMAT(m.reported_at, '%Y-%m-%d %H:%i:%s') AS t, m.title, m.role,
               m.link_prob, m.link_method, LEFT(e.text, 280) AS text
@@ -753,7 +972,8 @@ export async function incident(id: string) {
     ),
     contactsFor(inc.dept, inc.zone),
     assignmentsFor([id]),
-    sourcesFor([id])
+    sourcesFor([id]),
+    officerReportsFull(id)
   ]);
 
   // Linked reports in time order; news articles linked without a member row are added too.
@@ -782,7 +1002,9 @@ export async function incident(id: string) {
     reports,
     contacts,
     assigned: assigned[id] ?? null,
-    decisions
+    decisions,
+    /** completion reports from the department's officer console (remarks and site photos), newest first */
+    deptReports
   };
 }
 
@@ -801,7 +1023,8 @@ export interface ListFilter {
   sort: "t" | "sev" | "c" | "r" | "d";
   dir: 1 | -1;
   page: number;
-  scope: "period" | "all";
+  /** period = the dashboard's period; 30d = reported in the last 30 days; all = any date */
+  scope: "period" | "all" | "30d";
 }
 
 export async function list(f: ListFilter) {
@@ -815,6 +1038,7 @@ export async function list(f: ListFilter) {
   } else {
     where.push("i.first_reported_at <= ?");
     params.push(now);
+    if (f.scope === "30d") (where.push("i.first_reported_at > ? - INTERVAL 30 DAY"), params.push(now));
     if (f.zone) (where.push("i.zone_no = ?"), params.push(f.zone));
     if (f.dept) (where.push("i.lead_dept = ?"), params.push(f.dept));
   }
@@ -826,8 +1050,10 @@ export async function list(f: ListFilter) {
   if (st === "open") where.push(`i.is_open = 1 AND NOT ${ROUTED}`);
   else if (st === "unverified") where.push(`i.is_open = 1 AND i.verified = 0 AND NOT ${DECIDED("'verify','reject','resolve'")}`);
   else if (st === "verified") where.push("i.is_open = 1 AND i.verified = 1");
+  else if (st === "overdue") where.push(`i.is_open = 1 AND i.sla_breached = 1 AND NOT ${ROUTED}`);
   else if (st === "awaiting")
-    where.push(`i.is_open = 1 AND i.awaiting_collector = 1 AND i.citizen_complaints > 0 AND NOT ${DECIDED("'verify','reject','resolve','reopen'")}`);
+    where.push(`((i.is_open = 1 AND i.awaiting_collector = 1 AND i.citizen_complaints > 0 AND ${FOR_COLLECTOR} AND NOT ${DECIDED("'verify','reject','resolve','reopen'")})
+      OR ${await sentByOfficer()})`);
   else if (st === "critical")
     where.push(`i.is_open = 1 AND i.severity_level = 'Severe' AND (i.verified = 0 OR i.awaiting_collector = 1) AND NOT ${DECIDED("'verify','reject','resolve'")}`);
   else if (st) (where.push("i.status_std = ?"), params.push(st));
@@ -880,16 +1106,37 @@ export async function search(text: string) {
 
 // ---------------------------------------------------------------- export --
 
-export async function exportRows(period: Period, zone: number | null, dept: string | null) {
+/**
+ * CSV export: the Collector's action list, not every incident. Two short sections: open
+ * incidents that need the Collector (the same explain() rule as the dashboard), then closed
+ * work waiting for the Collector's check (the My Tasks rule). Routine incidents stay with
+ * the departments and are only counted in the PDF.
+ */
+export async function exportRows(period: Period, zone: number | null, dept: string | null, focus: Focus = {}) {
   const now = await asOf();
-  const w = scopeWhere({ period, zone, dept }, now);
-  return q(
-    `SELECT i.incident_id AS id, i.category_label AS event, i.zone_name AS area, i.place_text AS location,
-            dp.name AS department, i.severity_level AS severity, i.status_std AS status,
-            i.citizen_complaints AS complaints, DATE_FORMAT(i.first_reported_at, '%Y-%m-%d %H:%i') AS reported
-     ${FROM} WHERE ${w.sql} ORDER BY i.first_reported_at DESC LIMIT 5000`,
-    w.params
-  );
+  const w = scopeWhere({ period, zone, dept, ...focus }, now);
+  const extra: string[] = [], xp: unknown[] = [];
+  if (zone) { extra.push("i.zone_no = ?"); xp.push(zone); }
+  if (dept) { extra.push("i.lead_dept = ?"); xp.push(dept); }
+  if (focus.cat) { extra.push("i.category_code = ?"); xp.push(focus.cat); }
+  if (focus.taluk) { extra.push("i.taluk_code = ?"); xp.push(focus.taluk); }
+  const sent = await sentByOfficer();
+  const [open, checks] = await Promise.all([
+    q(`SELECT ${ROW} ${FROM} WHERE ${w.sql} AND i.is_open = 1 AND NOT ${ROUTED} ORDER BY i.priority_score DESC LIMIT 400`, w.params),
+    q(`SELECT ${ROW}, ${sent} AS officer_sent ${FROM} WHERE ((i.is_open = 1 AND i.awaiting_collector = 1 AND i.citizen_complaints > 0 AND ${FOR_COLLECTOR}
+         AND NOT ${DECIDED("'verify','reject','resolve','reopen'")}) OR ${sent}) ${extra.map((x) => `AND ${x}`).join(" ")}
+       ORDER BY ${SEV_RANK}, i.last_update_at ASC LIMIT 100`, xp)
+  ]);
+  const need = open.map((r) => ({ r, p: explain(r) })).filter((x) => x.p.needsYou);
+  const row = (list: string, r: Row, why: string) => ({
+    list, id: r.id, what: r.title || r.type, where: [r.ward ? `Ward ${r.ward}` : null, r.zone_name].filter(Boolean).join(", ") || "Chennai",
+    department: r.dept_name ?? r.dept, severity: r.sev, why, reported: String(r.t).slice(0, 16),
+    past_deadline: Number(r.breached) ? "Yes" : "No", complaints: r.complaints
+  });
+  return [
+    ...need.map(({ r, p }) => row("Needs your attention", r, p.attention.join("; "))),
+    ...checks.map((r) => row("Closed work to check", r, taskBecause(r).join("; ")))
+  ];
 }
 
 // ---------------------------------------------------------- departments --
@@ -912,27 +1159,22 @@ export async function report(period: Period, zone: number | null, dept: string |
   const ov = await overview(period, zone, dept, focus);
   const now = ov.now;
   const w = scopeWhere({ period, zone, dept, ...focus }, now);
-  const [complaints, ongoing, statusMix] = await Promise.all([
-    q(
-      `SELECT ${ROW} ${FROM} WHERE ${w.sql} AND i.is_open = 1 AND i.citizen_complaints > 0
-       ORDER BY ${SEV_RANK}, i.citizen_complaints DESC, i.first_reported_at DESC LIMIT 60`,
-      w.params
-    ),
-    q(
-      `SELECT * FROM (SELECT ${ROW}, ROW_NUMBER() OVER (PARTITION BY i.severity_level
-         ORDER BY i.priority_score DESC, i.first_reported_at DESC) AS rn ${FROM} WHERE ${w.sql} AND i.is_open = 1) x
-       WHERE rn <= 25 ORDER BY FIELD(sev, 'Severe', 'High', 'Medium', 'Low'), rn`,
-      w.params
-    ),
-    q(`SELECT i.status_std AS status, COUNT(*) AS n FROM incidents i WHERE ${w.sql} GROUP BY i.status_std ORDER BY n DESC`, w.params)
+  const [cands, news] = await Promise.all([
+    // the incidents that need the Collector: open, highest priority first, kept only if explain() says so
+    q(`SELECT ${ROW} ${FROM} WHERE ${w.sql} AND i.is_open = 1 AND NOT ${ROUTED} ORDER BY i.priority_score DESC LIMIT 400`, w.params),
+    // in the news, with no department record
+    q(`SELECT ${ROW} ${FROM} WHERE ${w.sql} AND i.is_open = 1 AND i.media_only = 1 ORDER BY i.priority_score DESC LIMIT 5`, w.params)
   ]);
-  const [c, o] = await Promise.all([withDecisions(complaints).then(withSources), withDecisions(ongoing).then(withSources)]);
+  // the report lists the 10 most urgent; the rest are on the dashboard and in the action list (CSV)
+  const allNeed = cands.map((r) => ({ ...r, why: explain(r) })).filter((r) => r.why.needsYou);
+  const [a, g] = await Promise.all([withSources(allNeed.slice(0, 10)), withSources(news)]);
   return {
     ...ov,
     report: {
-      complaints: c.map((r) => ({ ...r, why: explain(r) })),
-      ongoing: o.map((r) => ({ ...r, why: explain(r) })),
-      statusMix: statusMix.map((r) => ({ status: r.status, n: Number(r.n) }))
+      attention: a,
+      attentionTotal: allNeed.length,
+      routine: Math.max(0, ov.kpi.cur.ongoing - allNeed.length),
+      newsOnly: g.map((r) => ({ ...r, why: explain(r) }))
     }
   };
 }

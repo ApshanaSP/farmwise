@@ -6,6 +6,7 @@ const AUTH_COOKIE_NAME = "dcd_session";
 // Routes that require a logged-in session, and which roles may access them.
 const PROTECTED_PREFIXES: { prefix: string; roles: string[] }[] = [
   { prefix: "/citizen", roles: ["citizen"] },
+  // the department officer console; the Collector signs in to the Collector console separately
   { prefix: "/officer", roles: ["department_officer"] },
   { prefix: "/collector", roles: ["collector"] },
   { prefix: "/profile", roles: ["citizen", "department_officer", "collector"] }

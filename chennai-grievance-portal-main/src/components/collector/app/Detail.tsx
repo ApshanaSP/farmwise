@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { IncidentDetail } from "@/lib/collector/intel";
+import type { IncidentDetail, Plain } from "@/lib/collector/intel";
 import { I } from "./icons";
 import { OfficerCard } from "./Overview";
 import { SOURCE_KIND, deptIcon, fmtDay, fmtShort, fmtTime, fullTitle, ms, plural, rel, sourceItems, type Row } from "./lib";
@@ -51,7 +51,7 @@ export function IncidentView({ id, c }: { id: string; c: Console }) {
   const deptContacts = (data.contacts as Row[]).filter((x) => x.dept_code === i.dept);
   const zoneContact = i.zone != null ? (data.contacts as Row[]).find((x) => x.zone_no != null && x.zone_no === i.zone) : undefined;
   const overdue = open && i.sla_due && ms(i.sla_due) < ms(c.now);
-  const why = i.why as { what: string[]; why: string[] };
+  const why = i.why as Plain;
 
   // group the linked reports by day
   const days: { day: string; items: Row[] }[] = [];
@@ -88,14 +88,18 @@ export function IncidentView({ id, c }: { id: string; c: Console }) {
         <section className="iv-col">
           <div>
             <div className="iv-t"><I n="alert" />What happened</div>
-            {why.what.length ? <ul className="reasons what">{why.what.map((w) => <li key={w}><I n="alert" />{w}</li>)}</ul>
-              : <p style={{ margin: "8px 0 0", color: "var(--text-2)" }}>{i.type}{i.loc ? ` at ${i.loc}` : ""}.</p>}
+            <p className="iv-sum">{why.summary}</p>
+            {why.facts.length > 0 && <ul className="iv-facts">{why.facts.map((f) => <li key={f}>{f}</li>)}</ul>}
           </div>
-          <div>
-            <div className="iv-t"><I n="spark" />Why it needs attention</div>
-            {why.why.length ? <ul className="reasons why">{why.why.map((w) => <li key={w}><I n="chevr" />{w}</li>)}</ul>
-              : <p style={{ margin: "8px 0 0", color: "var(--text-2)" }}>No extra risk factors: a routine {String(i.sev).toLowerCase()}-severity case.</p>}
-          </div>
+          {why.needsYou ? (
+            <div className="iv-need">
+              <div className="iv-t"><I n="bell" />Why it needs your attention</div>
+              <ol>{why.attention.map((w) => <li key={w}>{w}</li>)}</ol>
+            </div>
+          ) : open ? (
+            <div className="iv-ok"><I n="checkc" /><span><b>No action needed from you.</b> {i.dept_name ?? "The department"} is handling it; nothing about it is unusual.</span></div>
+          ) : null}
+          {(data.deptReports as Row[]).length > 0 && <DeptReport r={(data.deptReports as Row[])[0]} earlier={(data.deptReports as Row[]).length - 1} />}
           <div>
             <div className="iv-t"><I n="doc" />Key facts</div>
             <div className="facts">
@@ -106,8 +110,6 @@ export function IncidentView({ id, c }: { id: string; c: Console }) {
               <div><small>Taluk</small><b>{i.taluk_name ?? "Not resolved"}</b></div>
               <div title={confidenceNote(i)}><small>Confidence</small><b style={{ color: Number(i.confidence) < 0.7 ? "var(--high)" : undefined }}>
                 {i.confidence == null ? "—" : `${Math.round(Number(i.confidence) * 100)}%`}{Number(i.needs_review) ? " · review" : ""}</b></div>
-              {Number(i.injured) > 0 || Number(i.dead) > 0 ? <div><small>Casualties</small><b style={{ color: "var(--sev)" }}>{[Number(i.dead) ? `${i.dead} dead` : null, Number(i.injured) ? `${i.injured} injured` : null].filter(Boolean).join(", ")}</b></div> : null}
-              {Number(i.persons_affected) > 0 && <div><small>People affected</small><b>about {Number(i.persons_affected).toLocaleString("en-IN")}</b></div>}
             </div>
           </div>
         </section>
@@ -185,6 +187,24 @@ export function IncidentView({ id, c }: { id: string; c: Console }) {
           </div>
         </section>
       </div>
+    </div>
+  );
+}
+
+/** The department officer's completion report (remarks and site photos), sent from the officer console for the Collector's check. */
+function DeptReport({ r, earlier }: { r: Row; earlier: number }) {
+  return (
+    <div className="iv-rep">
+      <div className="iv-t"><I n="send" />Completion report from {r.dept}</div>
+      <q>“{r.remarks}”</q>
+      <small>{r.by} · sent {fmtShort(r.t)}{earlier > 0 ? ` · ${plural(earlier, "earlier report")}` : ""}</small>
+      {(r.photos as string[]).length > 0 && (
+        <div className="iv-ph">
+          {(r.photos as string[]).map((p, k) => (
+            <a key={p} href={p} target="_blank" rel="noreferrer" title="Open the full photo"><img src={p} alt={`Site photo ${k + 1}`} loading="lazy" /></a>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

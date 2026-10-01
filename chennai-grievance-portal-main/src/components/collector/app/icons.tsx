@@ -55,6 +55,21 @@ const ICONS = {
   timer: "<circle cx=\"12\" cy=\"13\" r=\"8\"/><path d=\"M12 9v4l2 2M9 2h6\"/>",
   sliders: "<path d=\"M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0\"/><circle cx=\"16\" cy=\"6\" r=\"2\"/><circle cx=\"10\" cy=\"12\" r=\"2\"/><circle cx=\"18\" cy=\"18\" r=\"2\"/>",
   target: "<circle cx=\"12\" cy=\"12\" r=\"8\"/><circle cx=\"12\" cy=\"12\" r=\"3\"/><path d=\"M12 2v3M12 19v3M2 12h3M19 12h3\"/>",
+  // Ask District IQ
+  thumbUp: "<path d=\"M7 11v9H4v-9z\"/><path d=\"M7 11l4-8a2 2 0 0 1 3 2l-1 5h5.5a2 2 0 0 1 2 2.3l-1.2 6A2 2 0 0 1 17.3 20H7\"/>",
+  thumbDown: "<path d=\"M7 13V4H4v9z\"/><path d=\"M7 13l4 8a2 2 0 0 0 3-2l-1-5h5.5a2 2 0 0 0 2-2.3l-1.2-6A2 2 0 0 0 17.3 4H7\"/>",
+  table: "<rect x=\"3\" y=\"4\" width=\"18\" height=\"16\" rx=\"2\"/><path d=\"M3 9h18M3 14h18M9 9v11\"/>",
+  donut: "<circle cx=\"12\" cy=\"12\" r=\"8\"/><circle cx=\"12\" cy=\"12\" r=\"3.5\"/><path d=\"M12 4v4.5M19.5 14.5l-4.2-1.4\"/>",
+  line: "<path d=\"M3 20h18\"/><path d=\"M4 16l5-6 4 3 7-8\"/>",
+  barH: "<path d=\"M4 4v16\"/><path d=\"M4 7h11M4 12h15M4 17h7\"/>",
+  stop: "<rect x=\"6\" y=\"6\" width=\"12\" height=\"12\" rx=\"2\"/>",
+  info: "<circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M12 11v6M12 7.5h.01\"/>",
+  grid: "<rect x=\"3\" y=\"3\" width=\"7\" height=\"7\" rx=\"1.5\"/><rect x=\"14\" y=\"3\" width=\"7\" height=\"7\" rx=\"1.5\"/><rect x=\"3\" y=\"14\" width=\"7\" height=\"7\" rx=\"1.5\"/><rect x=\"14\" y=\"14\" width=\"7\" height=\"7\" rx=\"1.5\"/>",
+  compare: "<circle cx=\"6\" cy=\"8\" r=\"2.2\"/><circle cx=\"17\" cy=\"8\" r=\"2.2\"/><path d=\"M8.2 8h6.6\"/><circle cx=\"9\" cy=\"16\" r=\"2.2\"/><circle cx=\"19\" cy=\"16\" r=\"2.2\"/><path d=\"M11.2 16h5.6\"/>",
+  play: "<path d=\"M7 4v16l13-8z\"/>",
+  bookmark: "<path d=\"M6 3h12v18l-6-4-6 4z\"/>",
+  mic: "<rect x=\"9\" y=\"3\" width=\"6\" height=\"11\" rx=\"3\"/><path d=\"M5 11a7 7 0 0 0 14 0M12 18v3M9 21h6\"/>",
+  volume: "<path d=\"M4 9v6h4l5 4V5L8 9z\"/><path d=\"M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12\"/>"
 } as const;
 
 export type IconName = keyof typeof ICONS;

@@ -1,15 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import dynamic from "next/dynamic";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Overview as OverviewData, Period } from "@/lib/collector/intel";
 import type { Insights } from "@/lib/collector/insights";
 import type { MapGeo } from "@/lib/collector/geo";
 import Logo from "@/components/Logo";
 import { I, type IconName } from "./icons";
+import { BrandMark } from "./assistant/Brand";
 import { EnvPage, Page1 } from "./Overview";
-import { BriefingPage, TrendsPage, mdToHtml } from "./Insights";
+import { BriefingPage, GapsBody, PatternBody, TrendsPage, mdToHtml, type Pattern } from "./Insights";
 import { IncidentView } from "./Detail";
-import { Ask, ContactBody, DeptsBody, ExportBody, ListBody, Modal, NewsAllBody, ZonesBody } from "./Overlays";
+import { ContactBody, DeptsBody, ExportBody, ListBody, Modal, NewsAllBody, ZonesBody } from "./Overlays";
 import { SourcesBody } from "./Sources";
 import { AddedAllBody, ItemBody } from "./Added";
 import { StoriesBody } from "./Stories";
@@ -19,13 +21,22 @@ import { deptIcon, fmtDate, fmtShort, fmtTime, fullTitle, rel, sevTone, type Row
 import { esc } from "./SatMap";
 import "./collector.css";
 
+// The assistant loads only when it is first opened, so the console stays fast.
+const AssistantDialog = dynamic(() => import("./assistant/AssistantDialog"), { ssr: false });
+
 const PERIOD_KEYS: Period[] = ["daily", "weekly", "monthly", "quarterly"];
+const PERIOD_WORD: Record<Period, string> = { daily: "Daily", weekly: "Weekly", monthly: "Monthly", quarterly: "Quarterly" };
+const PERIOD_HINT: Record<Period, string> = {
+  daily: "Daily: only today, from midnight", weekly: "Weekly: incidents reported in the last 7 days",
+  monthly: "Monthly: incidents reported in the last 30 days", quarterly: "Quarterly: incidents reported in the last 90 days"
+};
 const FIT_W = 1366;
 const FIT_H = 680;
 export type PageKey = "overview" | "briefing" | "trends" | "environment";
 const PAGE_TITLE: Record<PageKey, string> = { overview: "Overview", briefing: "Briefing", trends: "Trends", environment: "Environment & markets" };
 
-export type ListPreset = Partial<{ dept: string; sev: string; status: string; q: string; sort: string; dir: number; scope: string; cat: string; taluk: string }>;
+export type ListPreset = Partial<{ dept: string; sev: string; status: string; q: string; sort: string; dir: number; scope: string; cat: string; taluk: string;
+  /** ignore the dashboard's zone filter (lists opened from the district-wide pages) */ anyZone: boolean }>;
 export interface DeptNav { code: string; name: string; head?: string | null; open: number; n: number; severe: number; unverified: number }
 type ModalState =
   | { kind: "list"; title: string; preset: ListPreset }
@@ -36,7 +47,9 @@ type ModalState =
   | { kind: "item"; title: string; item: Row }
   | { kind: "added"; title: string }
   | { kind: "stories"; title: string; focus: string | null }
-  | { kind: "markets"; title: string };
+  | { kind: "markets"; title: string }
+  | { kind: "pattern"; title: string; pattern: Pattern }
+  | { kind: "gaps"; title: string };
 interface Toast { id: number; msg: string; kind: "ok" | "alert"; act?: { label: string; run: () => void } }
 export interface Archived { name: string; version: number; markdown: string; as_of: string; issued_at: string }
 
@@ -73,9 +86,8 @@ export interface Console {
   setEnvSel: (card: string, id: string) => void;
   busyIds: Set<string>;
   reloadKey: number;
-  chat: { r: "q" | "a"; h: ReactNode }[];
-  setChat: React.Dispatch<React.SetStateAction<{ r: "q" | "a"; h: ReactNode }[]>>;
   setAsk: (v: boolean) => void;
+  setPeriod: (p: Period) => void;
   setDept: (code: string | null) => void;
   setZone: (z: number | null) => void;
   openInc: (id: string) => void;
@@ -92,6 +104,10 @@ export interface Console {
   /** developing stories: reports about the same event, followed over time */
   openStories: (focus?: string | null) => void;
   openMarkets: () => void;
+  /** an unusual spike or a recurring hotspot, with the incidents behind it */
+  openPattern: (p: Pattern) => void;
+  /** incidents seen only in the news, with no department record */
+  openGaps: () => void;
   zoneTip: (z: number) => string;
   zoneNameOf: (z: number) => string | null;
   talukName: (code: string | null) => string | null;
@@ -149,8 +165,24 @@ export default function CollectorApp({ initial, allDepts, user }: {
   const [modal, setModal] = useState<ModalState | null>(null);
   const [pop, setPop] = useState<"bell" | "profile" | null>(null);
   const [bellRead, setBellRead] = useState(false);
-  const [ask, setAsk] = useState(false);
-  const [chat, setChat] = useState<{ r: "q" | "a"; h: ReactNode }[]>([]);
+  const [ask, setAskState] = useState(false);
+  // once opened, the assistant stays mounted so the conversation survives closing it
+  const [askMounted, setAskMounted] = useState(false);
+  // today's insights count, for the launcher badge (loaded after the console, so it never slows it)
+  const [insightCount, setInsightCount] = useState(0);
+  useEffect(() => {
+    const t = setTimeout(() => {
+      fetch("/api/collector/assistant/insights").then((r) => (r.ok ? r.json() : null)).then((j) => j && setInsightCount(j.items?.length ?? 0)).catch(() => {});
+    }, 2500);
+    return () => clearTimeout(t);
+  }, []);
+  const setAsk = useCallback((v: boolean | ((x: boolean) => boolean)) => {
+    setAskState((x) => {
+      const next = typeof v === "function" ? v(x) : v;
+      if (next) setAskMounted(true);
+      return next;
+    });
+  }, []);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [busyIds, setBusyIds] = useState<Set<string>>(new Set());
   const [fit, setFit] = useState<{ on: boolean; z: number; w: number; h: number }>({ on: true, z: 1, w: 1366, h: 680 });
@@ -213,14 +245,17 @@ export default function CollectorApp({ initial, allDepts, user }: {
   }, [qs, reloadKey, toast]);
 
   // briefing, trends and markets load when a page needs them
-  const needIns = page !== "overview";
+  // the news-only list opens from page 1's snapshot too, so it loads insights when that modal is open
+  const needIns = page !== "overview" || modal?.kind === "gaps";
+  // Trends and Environment & markets are district-wide: they ignore the zone, taluk and department filters
+  const insQs = page === "trends" || page === "environment" ? `period=${period}` : qs;
   useEffect(() => {
     if (!needIns) return;
     let live = true;
     setIns(null);
-    api(`/api/collector/insights?${qs}`).then((j) => live && setIns(j)).catch((e) => live && toast(e.message, "alert"));
+    api(`/api/collector/insights?${insQs}`).then((j) => live && setIns(j)).catch((e) => live && toast(e.message, "alert"));
     return () => { live = false; };
-  }, [qs, reloadKey, needIns, toast]);
+  }, [insQs, reloadKey, needIns, toast]);
 
   useEffect(() => {
     if (!anim) return;
@@ -372,7 +407,8 @@ export default function CollectorApp({ initial, allDepts, user }: {
     layers, toggleLayer: (k) => setLayers((l) => ({ ...l, [k]: !l[k] })),
     sevTab, setSevTab,
     envSel, setEnvSel: (card, id) => setEnvSelState((m) => ({ ...m, [card]: id })),
-    busyIds, reloadKey, chat, setChat, setAsk,
+    busyIds, reloadKey, setAsk,
+    setPeriod: (p) => { setPeriod(p); setAnim(true); },
     setDept, setZone,
     openInc: (id) => { setModal(null); setInc(id); },
     openList: (preset, title) => { setInc(null); setModal({ kind: "list", title: `${title} · ${scopeName}`, preset: { cat: cat ?? undefined, taluk: taluk ?? undefined, ...preset } }); },
@@ -386,6 +422,9 @@ export default function CollectorApp({ initial, allDepts, user }: {
     openSources: (tab) => setModal({ kind: "sources", title: "Data sources", tab }),
     openStories: (focus = null) => setModal({ kind: "stories", title: `Developing stories · ${scopeName}`, focus }),
     openMarkets: () => setModal({ kind: "markets", title: "Mandi prices at Chennai markets" }),
+    openPattern: (p) => setModal({ kind: "pattern", pattern: p,
+      title: p.kind === "spike" ? "Unusual spike: what happened" : p.kind === "hotspot" ? "Recurring hotspot: what keeps happening" : "Is this problem rising?" }),
+    openGaps: () => setModal({ kind: "gaps", title: `In the news, not in department records · ${scopeName}` }),
     zoneTip: (z) => {
       const r = ov.zoneTable.find((x) => x.zone === z);
       if (!r) return `<b>Zone ${z}</b>`;
@@ -406,9 +445,16 @@ export default function CollectorApp({ initial, allDepts, user }: {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const typing = /INPUT|TEXTAREA|SELECT/.test((document.activeElement as HTMLElement)?.tagName);
+      // Ctrl+K opens the assistant
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setAsk(true);
+        return;
+      }
       if (e.key === "Escape") {
-        if (inc || modal) closeAll();
-        else if (ask) setAsk(false);
+        // the assistant sits above everything else, so it closes first
+        if (ask) setAsk(false);
+        else if (inc || modal) closeAll();
         setPop(null);
       }
       if (e.key === "/" && !typing) {
@@ -426,7 +472,9 @@ export default function CollectorApp({ initial, allDepts, user }: {
   }, [inc, modal, ask, closeAll, page, pages]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const bellN = bellRead ? 0 : ov.bell.length;
-  const feedsOk = ov.feeds.filter((f) => f.status === "ok").length;
+  // a degraded feed still delivered today's data (some of its endpoints are blocked), so it counts as live
+  const feedsOk = ov.feeds.filter((f) => f.status === "ok" || f.status === "degraded").length;
+  const feedsPartial = ov.feeds.filter((f) => f.status === "degraded").map((f) => String(f.source).toUpperCase());
   const pi = pages.indexOf(page);
 
   return (
@@ -440,16 +488,13 @@ export default function CollectorApp({ initial, allDepts, user }: {
         <div className="main">
           <header className="top">
             <div className="tbrand"><Logo className="tlogo" /><span><b>District <span>IQ</span></b><small>Collector&apos;s Console · Chennai</small></span></div>
-            <button className="feedlight" onClick={c.openFeeds} title="Data sources: status, refresh, add a source, OCR, audit log">
-              <i className={feedsOk === ov.feeds.length ? "" : "warn"} />{feedsOk}/{ov.feeds.length} feeds live
+            <button className="feedlight" onClick={c.openFeeds}
+              title={`Data sources: status, refresh, add a source, OCR, audit log${feedsPartial.length ? `. Partly available (some endpoints blocked): ${feedsPartial.join(", ")}` : ""}`}>
+              <i className={feedsOk === ov.feeds.length && !feedsPartial.length ? "" : "warn"} />{feedsOk}/{ov.feeds.length} feeds live
+              {feedsPartial.length > 0 && <small className="feedpart">{feedsPartial.length} partial</small>}
             </button>
             <Search c={c} ov={ov} />
-            <div className="seg" role="tablist" aria-label="Period">
-              {PERIOD_KEYS.map((p) => (
-                <button key={p} role="tab" aria-selected={period === p} className={period === p ? "on" : ""}
-                  onClick={() => { setPeriod(p); setAnim(true); }}>{p[0].toUpperCase() + p.slice(1)}</button>
-              ))}
-            </div>
+            <Collected ov={ov} onClick={c.openFeeds} />
             <button className="tbtn" onClick={c.openWorkspace} title="Save or reopen a workspace"><I n="layers" /><span className="lb">{workspaceName ? workspaceName.slice(0, 18) : "Workspace"}</span></button>
             <button className="tbtn icon" onClick={() => setModal({ kind: "customize", title: "Customize the dashboard" })} title="Choose what the dashboard shows" aria-label="Customize"><I n="sliders" /></button>
             <button className="tbtn pri" onClick={() => setModal({ kind: "export", title: "Export report" })}><I n="download" /><span className="lb">Export</span></button>
@@ -494,27 +539,41 @@ export default function CollectorApp({ initial, allDepts, user }: {
           <div className="body">
             <section className="phead">
               <h1>{PAGE_TITLE[page]}</h1>
-              <label className="fsel" title="Zone (Greater Chennai Corporation)"><I n="pin" />Zone
-                <select value={zone ?? ""} onChange={(e) => setZone(e.target.value ? Number(e.target.value) : null)} aria-label="Zone">
-                  <option value="">All 15 zones</option>
-                  {ov.zoneTable.map((z) => <option key={z.zone} value={z.zone}>{z.name}</option>)}
-                </select>
-              </label>
-              <label className="fsel" title="Revenue taluk"><I n="map" />Taluk
-                <select value={taluk ?? ""} onChange={(e) => setTaluk(e.target.value || null)} aria-label="Taluk">
-                  <option value="">All taluks</option>
-                  {[...(geo?.taluks ?? [])].sort((a, b) => a.name.localeCompare(b.name)).map((t) => <option key={t.code} value={t.code}>{t.name}</option>)}
-                </select>
-              </label>
-              <label className="fsel" title="Department"><I n="gov" />Department
-                <select value={dept ?? ""} onChange={(e) => setDept(e.target.value || null)} aria-label="Department">
-                  <option value="">All departments</option>
-                  {depts.map((d) => <option key={d.code} value={d.code}>{d.name}{d.open ? ` (${d.open} open)` : ""}</option>)}
-                </select>
-              </label>
-              {cat && <span className="fchip alt" title="Category filter">{catLabel}<button onClick={() => setCat(null)} aria-label="Clear category"><I n="x" /></button></span>}
-              {(zone || dept || cat || taluk) && <span className="fchip">Clear<button onClick={() => { setDept(null); setZone(null); setCatState(null); setTalukState(null); }} aria-label="Clear all filters"><I n="x" /></button></span>}
-              <span className="asof">Data as of <b>{fmtTime(ov.now)}</b>, {fmtDate(ov.now)}</span>
+              {page === "environment" || page === "trends" ? (
+                <span className="fnote"><I n="map" />{page === "trends"
+                  ? "Whole district, not filtered. Click any row to see what is behind it."
+                  : "Whole district: choose a station on each card. Prices are shown per Chennai market."}</span>
+              ) : (
+                // every filter in one group, in the order the Collector narrows down: when, where, which department
+                <div className="filters" role="group" aria-label="Filters">
+                  <div className="seg fseg" role="tablist" aria-label="Period">
+                    {PERIOD_KEYS.map((p) => (
+                      <button key={p} role="tab" aria-selected={period === p} className={period === p ? "on" : ""} title={PERIOD_HINT[p]}
+                        onClick={() => { setPeriod(p); setAnim(true); }}>{PERIOD_WORD[p]}</button>
+                    ))}
+                  </div>
+                  <label className="fsel" title="Zone (Greater Chennai Corporation)"><I n="pin" />
+                    <select value={zone ?? ""} onChange={(e) => setZone(e.target.value ? Number(e.target.value) : null)} aria-label="Zone">
+                      <option value="">All 15 zones</option>
+                      {ov.zoneTable.map((z) => <option key={z.zone} value={z.zone}>{z.name}</option>)}
+                    </select>
+                  </label>
+                  <label className="fsel" title="Revenue taluk"><I n="map" />
+                    <select value={taluk ?? ""} onChange={(e) => setTaluk(e.target.value || null)} aria-label="Taluk">
+                      <option value="">All taluks</option>
+                      {[...(geo?.taluks ?? [])].sort((a, b) => a.name.localeCompare(b.name)).map((t) => <option key={t.code} value={t.code}>{t.name}</option>)}
+                    </select>
+                  </label>
+                  <label className="fsel" title="Department"><I n="gov" />
+                    <select value={dept ?? ""} onChange={(e) => setDept(e.target.value || null)} aria-label="Department">
+                      <option value="">All departments</option>
+                      {depts.map((d) => <option key={d.code} value={d.code}>{d.name}{d.open && d.code !== dept ? ` (${d.open} open)` : ""}</option>)}
+                    </select>
+                  </label>
+                  {cat && <span className="fchip alt" title="Category filter">{catLabel}<button onClick={() => setCat(null)} aria-label="Clear category"><I n="x" /></button></span>}
+                  {(zone || dept || cat || taluk) && <button className="fclear" onClick={() => { setDept(null); setZone(null); setCatState(null); setTalukState(null); }}><I n="x" />Clear</button>}
+                </div>
+              )}
               <div className="pager" role="tablist" aria-label="Pages">
                 <button className="nx" onClick={() => pages[pi - 1] && setPage(pages[pi - 1])} disabled={pi <= 0} aria-label="Previous page"><I n="chevl" /></button>
                 {pages.map((p, k) => (
@@ -527,7 +586,7 @@ export default function CollectorApp({ initial, allDepts, user }: {
             </section>
             <div id="view" className={anim ? "anim" : ""}>
               {page === "overview" ? <Page1 d={ov} c={c} />
-                : page === "briefing" ? <BriefingPage ins={ins} c={c} />
+                : page === "briefing" ? <BriefingPage ins={ins} d={ov} c={c} />
                   : page === "trends" ? <TrendsPage ins={ins} c={c} />
                     : <EnvPage d={ov} ins={ins} c={c} />}
             </div>
@@ -537,7 +596,7 @@ export default function CollectorApp({ initial, allDepts, user }: {
         {(inc || modal) && <div className="scrim" onClick={closeAll} />}
         {inc && <IncidentView id={inc} c={c} />}
         {modal && (
-          <Modal title={modal.title} c={c} narrow={["depts", "zones", "customize", "item"].includes(modal.kind)} wide={modal.kind === "stories" || modal.kind === "markets"}>
+          <Modal title={modal.title} c={c} narrow={["depts", "zones", "customize", "item"].includes(modal.kind)} wide={["stories", "markets", "pattern"].includes(modal.kind)}>
             {modal.kind === "list" ? <ListBody key={modal.title} preset={modal.preset} c={c} />
               : modal.kind === "zones" ? <ZonesBody d={ov} c={c} />
                 : modal.kind === "depts" ? <DeptsBody c={c} />
@@ -551,7 +610,9 @@ export default function CollectorApp({ initial, allDepts, user }: {
                                 : modal.kind === "item" ? <ItemBody item={modal.item} c={c} />
                                   : modal.kind === "added" ? <AddedAllBody d={ov} c={c} />
                                     : modal.kind === "stories" ? <StoriesBody d={ov} c={c} focus={modal.focus} />
-                                      : modal.kind === "markets" ? <MarketsFull ins={ins} c={c} /> : null}
+                                      : modal.kind === "markets" ? <MarketsFull ins={ins} c={c} />
+                                        : modal.kind === "pattern" ? <PatternBody key={JSON.stringify(modal.pattern)} p={modal.pattern} c={c} />
+                                          : modal.kind === "gaps" ? <GapsBody ins={ins} c={c} /> : null}
           </Modal>
         )}
         <div className="toasts">
@@ -562,10 +623,32 @@ export default function CollectorApp({ initial, allDepts, user }: {
             </div>
           ))}
         </div>
-        <button className="ask-fab" onClick={() => setAsk((v) => !v)} aria-label="Ask District IQ"><I n="spark" /><span>Ask District IQ</span></button>
-        {ask && <Ask c={c} d={ov} />}
+        <button className="ask-fab" onClick={() => setAsk((v) => !v)} aria-label="Ask District IQ (Ctrl+K)" title="Ask District IQ (Ctrl+K)" aria-expanded={ask}>
+          <BrandMark size={34} className="ask-mark" /><span>Ask District IQ</span>
+          {insightCount > 0 && !ask && <em className="ask-badge" aria-label={`${insightCount} insights for today`}>{insightCount}</em>}
+        </button>
+        {askMounted && <AssistantDialog c={c} open={ask} onClose={() => setAsk(false)} />}
       </div>
     </div>
+  );
+}
+
+/** Did today's 6:00 AM collection happen? Green when every feed was fetched since 6:00 AM today. */
+function Collected({ ov, onClick }: { ov: OverviewData; onClick: () => void }) {
+  const s = ov.collection;
+  const all = !!s && s.total > 0 && s.missing.length === 0;
+  const head = !s ? "Collected daily, 6:00 AM"
+    : all ? `Collected today, ${fmtTime(s.lastRun ?? ov.now)}`
+      : s.running ? "Collecting now…"
+        : s.done.length ? `Today: ${s.done.length} of ${s.total} feeds` : "Today's 6:00 AM run pending";
+  const tip = !s ? "Every source is collected once a day at 6:00 AM."
+    : `Every source is collected once a day from 6:00 AM (the laptop checks hourly until each is done).` +
+      (s.lastRun ? ` Last collection: ${fmtTime(s.lastRun)}, ${fmtDate(s.lastRun)}.` : "") +
+      (s.missing.length ? ` Not yet collected today: ${s.missing.join(", ")}.` : " All feeds collected today.") + " Click for the data sources.";
+  return (
+    <button className={`daily${s && !all ? " pend" : ""}`} title={tip} onClick={onClick}>
+      <I n={all ? "checkc" : "clock"} /><span>{head}<small>Data as of {fmtTime(ov.now)}, {fmtDate(ov.now)}</small></span>
+    </button>
   );
 }
 

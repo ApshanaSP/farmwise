@@ -90,21 +90,24 @@ llm:
 # generator's --rainfall-csv input, so all synthetic sources keep the same rain days.
 # The hospital and PWD generators keep 180 days through their HISTORY_DAYS / WINDOW_DAYS
 # constants; police keeps 180 days through --days 180.
+# Collection day starts at this hour (local time): every source is collected once a day, on the first
+# check after it (the scheduled task checks hourly and at sign-in, so a sleeping laptop catches up on waking).
+refresh_hour: 6
 refresh:
   - name: news
-    every_minutes: 60
+    every_minutes: 1440
     cwd: chennai_news_pipeline
     cmd: [python, run_pipeline.py, --no-db]
   - name: imd
-    every_minutes: 60
+    every_minutes: 1440
     cwd: imd_weather_collector
     cmd: [python, imd_weather_collector.py, --backfill-days, "2"]
   - name: cpcb
-    every_minutes: 60
+    every_minutes: 1440
     cwd: cpcb_air_quality_collector
     cmd: [python, cpcb_air_quality_collector.py]
   - name: cfm
-    every_minutes: 180
+    every_minutes: 1440
     cwd: cfm_dss_collector
     cmd: [python, cfm_dss_collector.py, --backfill-days, "3"]
   - name: hospital

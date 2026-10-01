@@ -19,7 +19,7 @@ export function Modal({ title, children, c, narrow, wide }: { title: string; chi
 }
 
 const STATUS_OPTS: [string, string][] = [
-  ["open", "Unresolved"], ["awaiting", "Awaiting your verification"], ["critical", "Severe, not yet verified"],
+  ["open", "Unresolved"], ["awaiting", "Awaiting your verification"], ["critical", "Severe, not yet checked"], ["overdue", "Open and past deadline"],
   ["Open", "Open"], ["Under review", "Under review"], ["Assigned", "Assigned"], ["In progress", "In progress"],
   ["Resolved", "Resolved"], ["Rejected", "Rejected"], ["Lapsed", "Lapsed"]
 ];
@@ -35,7 +35,7 @@ export function ListBody({ preset, c }: { preset: ListPreset; c: Console }) {
   useEffect(() => {
     let live = true;
     const p = new URLSearchParams({ period: c.period, sort: String(f.sort), dir: String(f.dir), page: String(f.page), scope: String(f.scope) });
-    if (c.zone) p.set("zone", String(c.zone));
+    if (c.zone && !f.anyZone) p.set("zone", String(c.zone));
     for (const k of ["dept", "sev", "status", "q", "cat", "taluk"] as const) if ((f as Record<string, unknown>)[k]) p.set(k, String((f as Record<string, unknown>)[k]));
     fetch(`/api/collector/list?${p}`).then((r) => r.json()).then((j) => live && setData(j));
     return () => { live = false; };
@@ -187,15 +187,24 @@ export function ContactBody({ dept, contacts }: { dept: Row; contacts: Row[] }) 
   );
 }
 
+const REPORT_PERIODS = [
+  ["daily", "Daily", "last 24 hours"], ["weekly", "Weekly", "last 7 days"], ["monthly", "Monthly", "last 30 days"], ["quarterly", "Quarterly", "last 90 days"]
+] as const;
+
 export function ExportBody({ c }: { c: Console }) {
   const [busy, setBusy] = useState<"pdf" | "csv" | null>(null);
+  // the report has its own period, starting from the dashboard's
+  const [period, setPeriod] = useState<string>(c.period);
+  const word = REPORT_PERIODS.find((p) => p[0] === period)!;
   const q = () => {
-    const p = new URLSearchParams({ period: c.period });
+    const p = new URLSearchParams({ period });
     if (c.zone) p.set("zone", String(c.zone));
     if (c.dept) p.set("dept", c.dept);
+    if (c.cat) p.set("cat", c.cat);
+    if (c.taluk) p.set("taluk", c.taluk);
     return p;
   };
-  const stem = `district-iq-${c.period}${c.zone ? "-zone" + c.zone : ""}${c.dept ? "-" + c.dept.toLowerCase() : ""}`;
+  const stem = `district-iq-${period}${c.zone ? "-zone" + c.zone : ""}${c.dept ? "-" + c.dept.toLowerCase() : ""}`;
   const pdf = async () => {
     setBusy("pdf");
     try {
@@ -221,7 +230,7 @@ export function ExportBody({ c }: { c: Console }) {
       a.download = `${stem}-incidents.csv`;
       a.click();
       URL.revokeObjectURL(url);
-      c.toast(`${j.count.toLocaleString("en-IN")} incidents exported to CSV.`);
+      c.toast(j.count ? `Action list exported: ${j.count.toLocaleString("en-IN")} items that need you.` : "Nothing needs you in this scope; the CSV has only its header.");
     } catch {
       c.toast("CSV export failed.", "alert");
     } finally {
@@ -230,26 +239,33 @@ export function ExportBody({ c }: { c: Console }) {
   };
   return (
     <>
-      <p style={{ margin: "0 0 14px", color: "var(--text-2)", fontSize: 14 }}>
-        Scope: <b>{c.periodLabel}</b> · <b>{c.zoneName ?? "District-wide"}</b>{c.deptName ? <> · <b>{c.deptName}</b></> : null}. Change the filters on the dashboard to change the report.
-      </p>
+      <div className="xperiod">
+        <span>Report for</span>
+        <div className="seg" role="tablist" aria-label="Report period">
+          {REPORT_PERIODS.map(([k, w, hint]) => (
+            <button key={k} role="tab" aria-selected={period === k} className={period === k ? "on" : ""} title={`Incidents reported in the ${hint}`}
+              onClick={() => setPeriod(k)}>{w}</button>
+          ))}
+        </div>
+        <small>{word[2]} · {c.zoneName ?? "whole district"}{c.talukName(c.taluk) ? ` · ${c.talukName(c.taluk)} taluk` : ""}{c.deptName ? ` · ${c.deptName}` : ""}</small>
+      </div>
       <div className="xopts">
         <div className="xopt main">
-          <h4><span className="kpi-ic t-sev"><I n="doc" /></span>PDF report</h4>
-          <p>A complete briefing to print or share, with every insight on the dashboard.</p>
+          <h4><span className="kpi-ic t-sev"><I n="doc" /></span>{word[1]} report (PDF)</h4>
+          <p>Two to three pages to read or print. Only what needs you; routine work is counted, not listed.</p>
           <ul>
-            <li>Headline figures with change vs. the previous period, and key insights</li>
-            <li>Charts: complaints by department, top zones, severity mix and the trend</li>
-            <li>Ongoing incidents grouped by priority, each with its reasons</li>
-            <li>Open complaints, officer actions awaiting your verification, and news sent to departments</li>
-            <li>Rainfall, air quality and reservoir storage with trends</li>
+            <li>Headline numbers and a few key points</li>
+            <li>Incidents that need your attention, and why</li>
+            <li>Closed work waiting for your check</li>
+            <li>Where the workload is; what is only in the news</li>
+            <li>Rain, air quality and reservoirs</li>
           </ul>
-          <button className="btn" onClick={pdf} disabled={!!busy}>{busy === "pdf" ? <><I n="refresh" className="spin" />Building report…</> : <><I n="download" />Download PDF report</>}</button>
+          <button className="btn" onClick={pdf} disabled={!!busy}>{busy === "pdf" ? <><I n="refresh" className="spin" />Building report…</> : <><I n="download" />Download {word[1].toLowerCase()} report</>}</button>
         </div>
         <div className="xopt">
-          <h4><span className="kpi-ic t-info"><I n="chart" /></span>CSV data</h4>
-          <p>Every incident in scope as a spreadsheet: ID, event, zone, location, department, severity, status, complaints and time.</p>
-          <button className="btn plain" onClick={csv} disabled={!!busy}>{busy === "csv" ? "Preparing…" : <><I n="download" />Download CSV</>}</button>
+          <h4><span className="kpi-ic t-info"><I n="chart" /></span>Action list (CSV)</h4>
+          <p>A short spreadsheet of what to act on: incidents that need you, then closed work to check. One row each, with the reason. Not every incident.</p>
+          <button className="btn plain" onClick={csv} disabled={!!busy}>{busy === "csv" ? "Preparing…" : <><I n="download" />Download action list</>}</button>
         </div>
       </div>
     </>
@@ -271,69 +287,6 @@ export function NewsAllBody({ d, c }: { d: OverviewData; c: Console }) {
           {i.assigned && <span className="routed" style={{ alignSelf: "flex-start" }}><I n="send" />Sent to {i.assigned.officer_name ? `${i.assigned.officer_name}, ` : ""}{i.assigned.officer_designation ?? i.dept_name}</span>}
         </button>
       ))}
-    </div>
-  );
-}
-
-// ------------------------------------------------------------ assistant --
-
-const ASKQ = ["Which zone needs attention now?", "Summarize this period", "What is waiting for my verification?", "Which department is slowest?"];
-
-/** Rule-based answers over the same data the console shows; no model is called. */
-export function answer(text: string, d: OverviewData | null, c: Console): ReactNode {
-  if (!d) return "Open the overview first; I answer from its data.";
-  const t = text.toLowerCase();
-  const where = c.zoneName ? ` in ${c.zoneName}` : "";
-  if (/zone|area|attention|where/.test(t)) {
-    const z = [...d.zoneTable].sort((a, b) => b.severe * 3 + b.complaints - (a.severe * 3 + a.complaints))[0];
-    if (!z) return "No incidents in this period.";
-    const top = d.severity.rows[0];
-    return (<><b>{z.name}</b> has the heaviest load: {z.open} open incidents, {z.complaints} open citizen complaints and {z.severe} severe events ({c.periodLabel.toLowerCase()}).
-      {top && <> Top open item: {fullTitle(top)} ({top.sev}).</>} <button onClick={() => c.setZone(z.zone)}>Filter dashboard to {z.name} ›</button></>);
-  }
-  if (/verif|waiting|task/.test(t)) {
-    return d.tasks.count ? (<>{d.tasks.count} complaints{where} have officer action waiting for your verification. First:{" "}
-      {d.tasks.rows.slice(0, 3).map((i, k) => (<span key={i.id}>{k ? ", " : ""}<button onClick={() => c.openInc(i.id)}>{i.type} – {i.zone_name}</button></span>))}.</>)
-      : "Nothing is waiting for your verification.";
-  }
-  if (/slow|department|dept/.test(t)) {
-    const b = d.backlog;
-    return b ? (<><b>{b.name}</b> has the oldest open backlog{where}: {Math.round(b.hours / 24)} days per open incident on average ({b.n} open). <button onClick={() => c.setDept(b.code)}>Show {b.name} ›</button></>)
-      : "No department has enough open incidents to compare.";
-  }
-  const k = d.kpi.cur;
-  const topD = d.bottom.byDept[0];
-  return (<>{d.periodInfo.label}, {(c.zoneName ?? "district-wide").toLowerCase()}: {k.severe} severe events, {k.ongoing} incidents still open with {k.complaints} open citizen complaints, and {k.resolved} resolved.
-    {topD && <> {topD.l} receives the most citizen complaints ({topD.v}).</>}</>);
-}
-
-export function Ask({ c, d }: { c: Console; d: OverviewData | null }) {
-  const [text, setText] = useState("");
-  const send = (q: string) => {
-    if (!q.trim()) return;
-    c.setChat((m) => [...m, { r: "q", h: q }, { r: "a", h: answer(q, d, c) }]);
-    setText("");
-  };
-  useEffect(() => {
-    const b = document.getElementById("askB");
-    if (b) b.scrollTop = b.scrollHeight;
-  }, [c.chat]);
-  return (
-    <div className="ask" role="dialog" aria-label="Assistant">
-      <div className="ask-h">
-        <span className="kpi-ic" style={{ width: 34, height: 34, background: "rgba(255,255,255,.18)", color: "#fff" }}><I n="spark" /></span>
-        <div><b>Ask District IQ</b><small>Answers from the dashboard&apos;s live data</small></div>
-        <button className="xbtn" style={{ width: 30, height: 30 }} onClick={() => c.setAsk(false)} aria-label="Close"><I n="x" /></button>
-      </div>
-      <div className="ask-b" id="askB">
-        {c.chat.length ? c.chat.map((m, k) => <div key={k} className={`msg ${m.r}`}>{m.h}</div>)
-          : <div className="msg a">Ask about zones, departments or pending work. I read the same data you see, for the current period and filters.</div>}
-      </div>
-      <div className="ask-chips">{ASKQ.map((q) => <button key={q} onClick={() => send(q)}>{q}</button>)}</div>
-      <form className="ask-f" onSubmit={(e) => { e.preventDefault(); send(text); }}>
-        <input value={text} onChange={(e) => setText(e.target.value)} placeholder="Type a question" autoComplete="off" aria-label="Question" autoFocus />
-        <button className="btn sm" aria-label="Send"><I n="send" /></button>
-      </form>
     </div>
   );
 }

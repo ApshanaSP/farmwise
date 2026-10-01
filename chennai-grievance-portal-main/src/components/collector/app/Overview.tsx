@@ -12,7 +12,6 @@ import type { Console } from "./CollectorApp";
 import type { Insights } from "@/lib/collector/insights";
 import { MarketsCard } from "./Insights";
 import { AddedRow } from "./Added";
-import { StoriesCard } from "./Stories";
 import { useState } from "react";
 
 // =================================================================== page 1 ==
@@ -24,34 +23,47 @@ export function Page1({ d, c }: { d: OverviewData; c: Console }) {
   let ix = 0;
   const iv = () => ({ "--i": ix++ }) as React.CSSProperties;
 
+  // With a department selected, open complaints and ongoing incidents are nearly the same
+  // things counted twice (each complaint is usually one incident), so they become one tile.
+  const merged = !!c.dept;
   const KPIS: Record<string, React.ReactNode> = {
     severe: <Kpi key="severe" k="severe" icon="bell" tone="t-sev" label="Severe events" v={d.kpi.cur.severe} p={d.kpi.prev.severe}
-      goodDown series={d.kpi.series.severe} prevLabel={P.prev} style={iv()} onClick={() => c.openList({ sev: "Severe" }, "Severe events")} />,
-    complaints: <Kpi key="complaints" k="complaints" icon="chat" tone="t-high" label="Open complaints" v={d.kpi.cur.complaints}
+      goodDown series={d.kpi.series.severe} prevLabel={P.prev} style={iv()} onClick={() => c.openList({ sev: "Severe" }, "Severe events")}
+      tip="Incidents rated severe (danger to life, major damage or many people affected), reported in the period, open or closed." />,
+    complaints: merged ? null : <Kpi key="complaints" k="complaints" icon="chat" tone="t-high" label="Open complaints" v={d.kpi.cur.complaints}
       p={d.kpi.prev.complaints} goodDown series={d.kpi.series.complaints} prevLabel={P.prev} style={iv()}
-      onClick={() => c.openList({ status: "open", sort: "c" }, "Open complaints")} />,
-    ongoing: <Kpi key="ongoing" k="ongoing" icon="doc" tone="t-info" label="Ongoing incidents" v={d.kpi.cur.ongoing} p={d.kpi.prev.ongoing}
-      goodDown series={d.kpi.series.ongoing} prevLabel={P.prev} style={iv()} onClick={() => c.openList({ status: "open", sort: "sev", dir: 1 }, "Ongoing incidents")} />,
-    resolved: <Kpi key="resolved" k="resolved" icon="checkc" tone="t-low" label={`Resolved this ${P.unit.toLowerCase()}`} v={d.kpi.cur.resolved}
+      onClick={() => c.openList({ status: "open", sort: "c" }, "Open complaints")}
+      tip="Citizen complaints on incidents that are still open. One incident can have several complaints." />,
+    ongoing: <Kpi key="ongoing" k="ongoing" icon="doc" tone="t-info" label={merged ? "Open incidents" : "Ongoing incidents"} v={d.kpi.cur.ongoing} p={d.kpi.prev.ongoing}
+      goodDown series={d.kpi.series.ongoing} prevLabel={P.prev} style={iv()} onClick={() => c.openList({ status: "open", sort: "sev", dir: 1 }, "Open incidents")}
+      note={merged ? `${d.kpi.cur.complaints.toLocaleString("en-IN")} citizen complaints` : undefined}
+      tip="Incidents reported in the period that are not yet resolved. The same incidents are split by severity in the card below." />,
+    resolved: <Kpi key="resolved" k="resolved" icon="checkc" tone="t-low" label={period1(c) ? "Resolved today" : `Resolved this ${P.unit.toLowerCase()}`} v={d.kpi.cur.resolved}
       p={d.kpi.prev.resolved} series={d.kpi.series.resolved} prevLabel={P.prev} style={iv()}
-      onClick={() => c.openList({ status: "Resolved" }, "Resolved incidents")} />
+      onClick={() => c.openList({ status: "Resolved" }, "Resolved incidents")}
+      tip="Incidents reported in the period that the department has already resolved." />
   };
   const kpis = L.kpis.filter((k) => KPIS[k]);
   const addedPins = d.added.pins;
 
-  // grid built from the panels the Collector chose to show
-  const W: Record<string, string> = { map: "1.1fr", brief: "1.1fr", sev: "1.08fr", tasks: "1fr" };
-  const cols = ([["brief", L.panels.brief], ["sev", L.panels.severity], ["tasks", L.panels.tasks]] as const).filter(([, on]) => on).map(([k]) => k);
-  const rowB = [...(L.panels.map ? ["map"] : []), ...cols];
-  const strip = L.panels.snapshot && cols.length > 0;
-  const rowA = [...(L.panels.map ? ["map"] : []), ...(cols.length ? cols.map(() => "snap") : L.panels.snapshot ? ["snap"] : [])];
-  const areaRows = strip ? [rowA, rowB] : [cols.length ? rowB : rowA];
-  const colKeys = (strip || cols.length ? rowB : rowA);
+  // The map runs the full height on the left, where it has room to pan and zoom. On the right,
+  // the district snapshot is one horizontal strip, and under it the three working lists side by
+  // side: what is urgent (severity), what to check (tasks), and today's news.
+  const right = ([["sev", L.panels.severity], ["tasks", L.panels.tasks], ["brief", L.panels.brief]] as const).filter(([, on]) => on).map(([k]) => k as string);
+  const W: Record<string, string> = { map: "1.45fr", sev: "1fr", tasks: "1fr", brief: "1.15fr" };
+  const cols = [...(L.panels.map ? ["map"] : []), ...right];
+  const strip = L.panels.snapshot;
+  const top = [...(L.panels.map ? ["map"] : []), ...(right.length ? right.map(() => "snap") : ["snap"])];
+  const rows = strip && right.length ? [top, cols] : strip ? [top] : [cols];
   const grid: React.CSSProperties = {
-    gridTemplateColumns: colKeys.map((k) => `minmax(0,${W[k] ?? "1fr"})`).join(" "),
-    gridTemplateRows: strip ? "auto minmax(0,1fr)" : "minmax(0,1fr)",
-    gridTemplateAreas: areaRows.map((r) => `"${r.join(" ")}"`).join(" ")
+    gridTemplateColumns: (strip && !right.length ? top : cols).map((k) => `minmax(0,${W[k] ?? "1fr"})`).join(" "),
+    gridTemplateRows: rows.length > 1 ? "auto minmax(0,1fr)" : "minmax(0,1fr)",
+    gridTemplateAreas: rows.map((r) => `"${r.join(" ")}"`).join(" ")
   };
+  const LAYERS = [
+    ["severe", "Severe", "#E5484D", d.map.layerCounts.severe], ["complaint", "Complaints", "#FFA114", d.map.layerCounts.complaint],
+    ["other", "Other", "#4D8DFF", d.map.layerCounts.other]
+  ] as const;
 
   return (
     <>
@@ -74,60 +86,57 @@ export function Page1({ d, c }: { d: OverviewData; c: Console }) {
                   mode={c.mapMode} taluk={c.taluk} focus={c.focus}
                   onZone={(z) => c.setZone(z)} onTaluk={(t) => c.setTaluk(t)} onPin={(id) => c.openInc(id)} zoneTip={c.zoneTip}
                   onStation={(st) => { c.setEnvSel(st.kind, st.id); c.setPage("environment"); c.toast(`${st.name} selected on the Environment page.`); }} />
-                <div className="map-leg">
-                  {([["severe", "Severe event"], ["complaint", "Complaint"], ["other", "Other incident"]] as const).map(([k, l]) => (
-                    <button key={k} className={c.layers[k] ? "" : "off"} aria-pressed={c.layers[k]} onClick={() => c.toggleLayer(k)}>
-                      <i style={{ background: { severe: "#E5484D", complaint: "#FFA114", other: "#4D8DFF" }[k] }} />
-                      {l} ({d.map.layerCounts[k].toLocaleString("en-IN")})
-                    </button>
-                  ))}
-                  <button className={c.layers.added ? "" : "off"} aria-pressed={c.layers.added} onClick={() => c.toggleLayer("added")}
-                    title="Items from sources you added that name a place in or near Chennai">
-                    <i className="dia" style={{ background: "#8B5CF6" }} />
-                    From added sources ({addedPins.length})
-                  </button>
-                  <button className={c.layers.stations ? "" : "off"} aria-pressed={c.layers.stations} onClick={() => c.toggleLayer("stations")}
-                    title="A = air quality, R = rain gauge, L = lake or reservoir">
-                    <i style={{ background: "linear-gradient(90deg,#12925F 33%,#1560E8 33% 66%,#0891B2 66%)", borderRadius: 3 }} />
-                    Stations ({env.mapStations.length})
-                  </button>
-                </div>
                 {c.mapMode === "zones"
-                  ? <div className="map-heat"><span>Incidents by zone</span><div /><span><em style={{ fontStyle: "normal" }}>Fewer</em><em style={{ fontStyle: "normal" }}>More</em></span></div>
-                  : <div className="map-heat"><span>Colour = revenue taluk</span><span>Click a taluk to filter</span></div>}
+                  ? <div className="map-heat"><span>Incidents by zone</span><div /><span><em>Fewer</em><em>More</em></span></div>
+                  : <div className="map-heat"><span>Colour = revenue taluk</span></div>}
               </div>
+            </div>
+            {/* the legend sits under the map, so nothing covers the map itself; each item turns its pins on or off */}
+            <div className="map-leg2" role="group" aria-label="Show on the map">
+              {LAYERS.map(([k, l, col, n]) => (
+                <button key={k} className={c.layers[k] ? "" : "off"} aria-pressed={c.layers[k]} onClick={() => c.toggleLayer(k)} title={`Show or hide ${l.toLowerCase()} pins`}>
+                  <i style={{ background: col }} />{l}<b>{n.toLocaleString("en-IN")}</b>
+                </button>
+              ))}
+              <button className={c.layers.added ? "" : "off"} aria-pressed={c.layers.added} onClick={() => c.toggleLayer("added")}
+                title="Items from sources you added that name a place in or near Chennai">
+                <i className="dia" style={{ background: "#8B5CF6" }} />Added<b>{addedPins.length}</b>
+              </button>
+              <button className={c.layers.stations ? "" : "off"} aria-pressed={c.layers.stations} onClick={() => c.toggleLayer("stations")}
+                title="Air-quality stations, rain gauges and lakes">
+                <i className="sq" style={{ background: "linear-gradient(90deg,#12925F 33%,#1560E8 33% 66%,#0891B2 66%)" }} />Stations<b>{env.mapStations.length}</b>
+              </button>
             </div>
           </article>
         )}
 
-        {L.panels.snapshot && (
+        {strip && (
           <article className="card a-snap" style={iv()}>
             {d.snapshot.kind === "dept" ? <DeptSnap d={d} c={c} /> : d.snapshot.kind === "area" ? <AreaSnap d={d} c={c} /> : <DistrictSnap d={d} c={c} />}
           </article>
         )}
 
-        {L.panels.brief && <article className="card a-brief" style={iv()}><BriefCard d={d} c={c} /></article>}
-
         {L.panels.severity && <article className="card a-sev" style={iv()}><SeverityCard d={d} c={c} /></article>}
-
         {L.panels.tasks && <article className="card a-tasks" style={iv()}><TasksCard d={d} c={c} /></article>}
+        {L.panels.brief && <article className="card a-brief" style={iv()}><BriefCard d={d} c={c} /></article>}
       </section>
     </>
   );
 }
 
-export function Kpi({ k, icon, tone, label, v, p, goodDown, series, prevLabel, style, onClick }: {
+export function Kpi({ k, icon, tone, label, v, p, goodDown, series, prevLabel, style, onClick, tip, note }: {
   k: string; icon: IconName; tone: string; label: string; v: number; p: number; goodDown?: boolean;
   series: number[]; prevLabel: string; style: React.CSSProperties; onClick: () => void;
+  /** what the number counts, in plain words (hover) */ tip?: string; /** a second fact shown after the label */ note?: string;
 }) {
   const diff = v - p;
   const same = diff === 0;
   const cls = same ? "" : (goodDown ? diff < 0 : diff > 0) ? "good" : "bad";
   return (
-    <button className="kpi" style={style} onClick={onClick}>
+    <button className="kpi" style={style} onClick={onClick} title={tip ? `${tip} Click for the list.` : undefined}>
       <span className={`kpi-ic ${tone}`}><I n={icon} /></span>
       <span className="kpi-b">
-        <span className="kpi-l">{label}</span>
+        <span className="kpi-l">{label}{note && <em className="kpi-note">· {note}</em>}</span>
         <span className="kpi-r">
           <span>
             <span className={`kpi-n ${k === "severe" ? "c-sev" : ""}`}><Cnt v={v} /></span>
@@ -151,11 +160,12 @@ function SeverityCard({ d, c }: { d: OverviewData; c: Console }) {
   const first = SEVS.find((s) => counts[s] > 0) ?? "Severe";
   const tab = c.sevTab && (counts[c.sevTab] > 0 || c.sevTab === first) ? c.sevTab : first;
   const rows = d.severity.rows.filter((r) => r.sev === tab);
+  const needN = rows.filter((r) => r.why?.needsYou).length;
   return (
     <>
       <div className="ch">
         <svg className="ic" viewBox="0 0 24 24" style={{ color: "var(--sev)" }} aria-hidden="true"><path d="M12 3l10 18H2z" /><path d="M12 10v5M12 18h.01" /></svg>
-        <h3>Severity-based incidents</h3>
+        <h3 title="Open incidents by severity">By severity</h3>
         <button className="more" onClick={() => c.openList({ status: "open", sev: tab, sort: "sev", dir: 1 }, `${tab} incidents`)}>See all<I n="right" /></button>
       </div>
       <div className="sevtabs" role="tablist" aria-label="Severity">
@@ -166,20 +176,20 @@ function SeverityCard({ d, c }: { d: OverviewData; c: Console }) {
           </button>
         ))}
       </div>
+      {rows.length > 0 && (
+        <div className="sev-note">{needN ? <><I n="bell" /><b>{needN} need{needN === 1 ? "s" : ""} you</b>, shown first</> : <><I n="checkc" />All routine for the departments</>}</div>
+      )}
       <div className="fitlist">
-        {rows.length ? rows.map((i) => (
-          <button key={i.id} className={`si-item${c.focus?.id === i.id ? " on" : ""}`} style={{ "--c": SEV_HEX[i.sev] } as React.CSSProperties}
+        {rows.length ? [...rows].sort((a, b) => Number(!!b.why?.needsYou) - Number(!!a.why?.needsYou)).map((i) => (
+          <button key={i.id} className={`si-item${c.focus?.id === i.id ? " on" : ""}${i.why?.needsYou ? " need" : ""}`} style={{ "--c": SEV_HEX[i.sev] } as React.CSSProperties}
             onClick={() => { c.highlight(i); c.openInc(i.id); }}>
             <span className={`si-ic ${sevTone(i.sev)}`}><I n={deptIcon(i.dept)} /></span>
             <span className="si-main">
               <span className="si-t" title={fullTitle(i)}>{fullTitle(i)}</span>
               <span className="si-meta">{[i.zone_name, i.dept_name ?? i.dept, rel(i.t, d.now)].filter(Boolean).join(" · ")}</span>
-              <span className="si-foot">
-                <span className="si-why" title={[...(i.why?.what ?? []), ...(i.why?.why ?? [])].join("\n")}>
-                  <I n="alert" />{[i.why?.what?.[0], i.why?.why?.[0]].filter(Boolean).join(" · ") || i.type}
-                </span>
-                <Sources i={i} />
-              </span>
+              {i.why?.needsYou && (
+                <span className="si-why" title={i.why.attention.join("\n")}><I n="bell" />{i.why.attention[0]}</span>
+              )}
             </span>
           </button>
         )) : <Empty>No open {tab.toLowerCase()} incidents {c.periodLabel.toLowerCase()}.</Empty>}
@@ -193,40 +203,43 @@ function SeverityCard({ d, c }: { d: OverviewData; c: Console }) {
 function TasksCard({ d, c }: { d: OverviewData; c: Console }) {
   return (
     <>
-      <div className="ch"><I n="tasks" /><h3>My Tasks</h3>
+      <div className="ch"><I n="tasks" /><h3 title="Closed work for you to check">My Tasks</h3>
         <span className="cnt-b">{d.tasks.count}</span>
-        <button className="more" onClick={() => c.openList({ status: "awaiting", scope: "all", sort: "sev", dir: 1 }, "Complaints awaiting your verification")}>
+        <button className="more" onClick={() => c.openList({ status: "awaiting", scope: "all", sort: "sev", dir: 1 }, "Closed work for you to check")}>
           See all<I n="right" />
         </button>
+      </div>
+      <div className="task-rule" title={TASK_RULE}>
+        <I n="alert" /><span>{d.tasks.leftToDepts > 0 ? <><b>{d.tasks.leftToDepts}</b> routine closures left to departments</> : "Only important closures come to you"}</span>
       </div>
       <div className="fitlist">
         {d.tasks.rows.length ? d.tasks.rows.map((i) => (
           <div className="task" key={i.id} style={{ "--c": SEV_HEX[i.sev] } as React.CSSProperties}>
-            <button className="task-h" onClick={() => c.openInc(i.id)}>
-              <b title={fullTitle(i)}>{fullTitle(i)}</b>
-            </button>
-            <div className="task-act">
-              <em title={`${i.dept_name ?? i.dept} · ${i.officer ?? ""}`}>{i.officer ?? i.dept_name ?? "Department officer"} · {i.action ? rel(i.action.t, d.now) : "awaiting you"}</em>
-              <span title={i.action?.note ?? undefined}>{i.action ? i.action.note || i.action.step : "Reported the work as done."}</span>
+            <button className="task-h" onClick={() => c.openInc(i.id)} title={fullTitle(i)}><b>{fullTitle(i)}</b></button>
+            <div className="task-act" title={`${i.officer ?? i.dept_name ?? "Department officer"}: ${i.action ? i.action.note || i.action.step : "reported the work as done"}`}>
+              <em>{i.officer ?? i.dept_name ?? "Officer"}{i.action ? `, ${rel(i.action.t, d.now)}` : ""}:</em> {i.action ? i.action.note || i.action.step : "Reported the work as done."}
             </div>
             <div className="task-f">
-              <Sources i={i} />
+              <span className="task-why" title={`With you because: ${(i.because as string[]).join(", ")}`}>{(i.because as string[]).slice(0, 2).map((b) => <i key={b}>{b}</i>)}</span>
               <button className="btn sm plain icon" onClick={() => c.sendBack(i)} disabled={c.busyIds.has(i.id)}
-                title="Send back to the department" aria-label="Send back to the department"><I n="refresh" /></button>
-              <button className="btn sm ok" onClick={() => c.verify([i])} disabled={c.busyIds.has(i.id)}><I n="check" />Verify</button>
+                title="Not satisfied: send it back to the department" aria-label="Send back to the department"><I n="refresh" /></button>
+              <button className="btn sm ok" onClick={() => c.verify([i])} disabled={c.busyIds.has(i.id)} title="The work is done: close it"><I n="check" />Verify</button>
             </div>
           </div>
-        )) : <Empty>All caught up. No officer action is waiting for your verification.</Empty>}
+        )) : <Empty>All caught up. Nothing needs your check right now.</Empty>}
       </div>
     </>
   );
 }
 
+const TASK_RULE = "You check closed work only when it is severe or high severity, has 3 or more citizen complaints, needs several departments, " +
+  "was reported in the news, or (medium severity) took more than twice its deadline. Everything else is checked by the department head.";
+
 // ------------------------------------------------------------ snapshot --
 
 function Tile({ onClick, l, v, tone, title, txt }: { onClick?: () => void; l: string; v: React.ReactNode; tone?: string; title?: string; txt?: boolean }) {
   return (
-    <button className="stile" onClick={onClick} title={title ?? l}>
+    <button className={`stile${onClick ? "" : " static"}`} onClick={onClick} title={title ?? l} disabled={!onClick}>
       <small>{l}</small>
       <b className={txt ? "txt" : undefined} style={tone ? { color: tone } : undefined}>{v}</b>
     </button>
@@ -243,22 +256,48 @@ function SnapTitle({ icon, title, sub, more }: { icon: IconName; title: string; 
   );
 }
 
-function DistrictSnap({ d, c }: { d: OverviewData; c: Console }) {
-  const s = d.snapshot as Extract<OverviewData["snapshot"], { kind: "district" }>;
-  const ok = d.feeds.filter((f) => f.status === "ok").length;
-  const top = s.topZones.map((z) => z.name);
+/**
+ * The two tiles every snapshot shares. None repeats the KPI tiles above: they count open
+ * incidents that are severe or high, or past their deadline. (What is only in the news is a
+ * tab of Today's Briefing, where the reports can be read.)
+ */
+function CommonTiles({ s, c }: { s: { serious: number; overdue: number }; c: Console }) {
+  const p = c.periodLabel.toLowerCase();
   return (
     <>
-      <SnapTitle icon="chart" title="District Snapshot" sub={c.periodLabel} />
+      <Tile l="Severe or high, still open" v={<Cnt v={s.serious} />} tone={s.serious ? "var(--sev)" : undefined}
+        title={`Open incidents rated severe or high, reported in the ${p}. Click for the list.`}
+        onClick={() => c.openList({ status: "open", sort: "sev", dir: 1 }, "Open incidents, most severe first")} />
+      <Tile l="Past deadline, still open" v={<Cnt v={s.overdue} />} tone={s.overdue ? "var(--high)" : undefined}
+        title={`Open incidents that have missed their resolution deadline, reported in the ${p}. Click for the list.`}
+        onClick={() => c.openList({ status: "overdue", sort: "sev", dir: 1 }, "Open and past deadline")} />
+    </>
+  );
+}
+
+/** "Daily · last 24 hours": the period's name and what it covers. */
+const periodSub = (c: Console) => `${PERIOD_NAME[c.period]} · ${c.periodLabel.toLowerCase()}`;
+const period1 = (c: Console) => c.period === "daily";
+const PERIOD_NAME: Record<string, string> = { daily: "Daily", weekly: "Weekly", monthly: "Monthly", quarterly: "Quarterly" };
+
+function DistrictSnap({ d, c }: { d: OverviewData; c: Console }) {
+  const s = d.snapshot as Extract<OverviewData["snapshot"], { kind: "district" }>;
+  const top = s.topZones.map((z) => z.name);
+  const p = c.periodLabel.toLowerCase();
+  return (
+    <>
+      <SnapTitle icon="chart" title="District Snapshot" sub={`${periodSub(c)} · hover a tile for what it counts`} />
       <div className="snap">
-        <Tile onClick={c.openZones} l="Zones monitored" v={<Cnt v={s.zones} />} />
-        <Tile onClick={c.openDepts} l="Active depts" v={<Cnt v={s.activeDepts} />} />
-        <Tile onClick={() => c.openList({ status: "critical", scope: "all" }, "Severe, not yet verified")} l="Unverified severe"
-          v={<Cnt v={s.critical} />} tone="var(--sev)" />
-        <Tile onClick={() => s.topZones[0] && c.setZone(s.topZones[0].zone)} l="Hotspot zones" title={top.join(", ")} txt
-          v={top.join(", ") || "None"} tone="var(--accent-2)" />
-        <Tile onClick={c.openFeeds} l="Data feeds" v={`${ok} / ${d.feeds.length}`} tone={ok === d.feeds.length ? "var(--low)" : "var(--high)"} />
-        <Tile onClick={c.openFeeds} l="Last refresh" v={d.exportedAt ? fmtTime(d.exportedAt) : "—"} txt />
+        <Tile l="Most serious zones" txt v={top.join(", ") || "None"} tone="var(--accent-2)"
+          title={`GCC zones with the most severe and high incidents reported in the ${p} (a severe incident counts 3, a high one 1). ` +
+            `This is about seriousness now; "Most open work" below is about backlog. Click to show ${top[0] ?? "the first zone"}.`}
+          onClick={s.topZones[0] ? () => c.setZone(s.topZones[0].zone) : undefined} />
+        <Tile l="Most open work (taluk)" txt v={s.topTaluk ? `${s.topTaluk.name} · ${s.topTaluk.n}` : "None"} tone="var(--accent-2)"
+          title={`Revenue taluk with the most incidents still open, among those reported in the ${p}. Taluks and GCC zones have different boundaries.`} />
+        <CommonTiles s={s} c={c} />
+        <Tile l="Severe, not yet checked" v={<Cnt v={s.critical} />} tone={s.critical ? "var(--sev)" : undefined}
+          title="Open severe incidents that no officer has confirmed on the ground yet (any date). Click for the list."
+          onClick={() => c.openList({ status: "critical", scope: "all" }, "Severe, not yet checked")} />
       </div>
     </>
   );
@@ -268,13 +307,13 @@ export function OfficerCard({ o, label, compact }: { o: Row; label?: string; com
   const phones = String(o.phone ?? "").split("/").map((p) => p.trim()).filter(Boolean);
   const initials = String(o.name).replace(/^(Dr\.?|Tmt\.?|Thiru\.?)\s*/i, "").split(/[\s.]+/).filter((x) => x.length > 1).slice(0, 2).map((x) => x[0]).join("");
   return (
-    <div className="officer" style={compact ? { gridColumn: "span 2" } : undefined}>
+    <div className={`officer${compact ? " compact" : ""}`}>
       <span className="avatar">{initials || "GC"}</span>
       <span style={{ minWidth: 0 }}>
-        {label && <small style={{ fontWeight: 700, color: "var(--accent-2)" }}>{label}</small>}
-        <b>{o.name}</b>
+        {label && <small className="olabel">{label}</small>}
+        <b title={o.name}>{o.name}</b>
         <small className="desig" title={o.designation}>{o.designation}</small>
-        <span style={{ display: "flex", flexWrap: "wrap", gap: "2px 10px", marginTop: 3 }}>
+        <span className="ocontact">
           {phones.slice(0, compact ? 1 : 2).map((p) => <a key={p} href={`tel:${/^\d{8}$/.test(p) ? "044" + p : p.replace(/[^\d+]/g, "")}`}>{p}</a>)}
           {o.email && <a href={`mailto:${String(o.email).split(/[,\s/]+/)[0]}`} title={String(o.email).split(/[,\s/]+/)[0]}>
             {compact ? "Email" : String(o.email).split(/[,\s/]+/)[0]}</a>}
@@ -288,14 +327,13 @@ function AreaSnap({ d, c }: { d: OverviewData; c: Console }) {
   const s = d.snapshot as Extract<OverviewData["snapshot"], { kind: "area" }>;
   return (
     <>
-      <SnapTitle icon="pin" title={c.zoneName ?? "Zone"} sub="Zone snapshot" />
+      <SnapTitle icon="pin" title={c.zoneName ?? "Zone"} sub={`Zone snapshot · ${periodSub(c)}`} />
       <div className="snap">
-        {s.zoneOfficer && <OfficerCard o={s.zoneOfficer} label="Zonal officer (GCC)" compact />}
-        <Tile l="Open incidents" v={<Cnt v={s.active} />} />
-        <Tile l="Open complaints" v={<Cnt v={s.complaints} />} />
-        <Tile l="Severe incidents" v={<Cnt v={s.severe} />} tone="var(--sev)" />
-        <Tile l="Busiest department" title={s.keyDept?.name} v={s.keyDept?.name ?? "—"} tone="var(--accent-2)" txt
-          onClick={s.keyDept ? () => c.setDept(s.keyDept.code) : undefined} />
+        {s.zoneOfficer ? <OfficerCard o={s.zoneOfficer} label="Zonal officer (GCC)" compact />
+          : <div className="officer compact"><span className="avatar">ZO</span><span><b>Zonal officer</b><small>Not listed on the GCC website</small></span></div>}
+        <CommonTiles s={s} c={c} />
+        <Tile l="Busiest department" title={`Department with the most open incidents in this zone (${c.periodLabel.toLowerCase()}): ${s.keyDept?.name ?? "none"}${s.keyDept ? `, ${s.keyDept.n}` : ""}. Click to show only it.`}
+          v={s.keyDept?.name ?? "—"} tone="var(--accent-2)" txt onClick={s.keyDept ? () => c.setDept(s.keyDept.code) : undefined} />
       </div>
     </>
   );
@@ -307,15 +345,15 @@ function DeptSnap({ d, c }: { d: OverviewData; c: Console }) {
   const head = s.contacts.find((x) => x.dept_code === dept.code);
   return (
     <>
-      <SnapTitle icon={deptIcon(dept.code)} title={shortName(dept.name)} sub="Department snapshot"
-        more={<button className="more" onClick={() => c.openContact(dept, s.contacts)}><I n="phone" />Contacts</button>} />
+      <SnapTitle icon={deptIcon(dept.code)} title={shortName(dept.name)} sub={`Department snapshot · ${periodSub(c)}`}
+        more={<button className="more" onClick={() => c.openContact(dept, s.contacts)}><I n="phone" />All contacts</button>} />
       <div className="snap">
         {head ? <OfficerCard o={head} label="Department head (GCC)" compact />
-          : <div className="officer"><span className="avatar">{shortInit(dept.head)}</span><span><b>{dept.head}</b><small>{dept.org} · not on the GCC website</small></span></div>}
-        <Tile l="Open incidents" v={<Cnt v={s.open} />} />
-        <Tile l="Officer-verified, open" v={<Cnt v={s.verified} />} />
-        <Tile l="Past deadline" v={<Cnt v={s.overdue} />} tone="var(--sev)" />
-        <Tile l="Most open in" title={s.topZone?.name} v={s.topZone ? `${s.topZone.name} (${s.topZone.n})` : "—"} tone="var(--accent-2)" txt
+          : <div className="officer compact"><span className="avatar">{shortInit(dept.head)}</span>
+            <span style={{ minWidth: 0 }}><small className="olabel">Department head</small><b title={dept.head}>{dept.head}</b><small className="desig">{dept.org}</small></span></div>}
+        <CommonTiles s={s} c={c} />
+        <Tile l="Most open work in" title={s.topZone ? `${s.topZone.name} zone has the most open incidents for this department (${s.topZone.n}). Click to show only it.` : undefined}
+          v={s.topZone ? `${s.topZone.name} · ${s.topZone.n}` : "—"} tone="var(--accent-2)" txt
           onClick={s.topZone ? () => c.setZone(s.topZone.zone) : undefined} />
       </div>
     </>
@@ -327,6 +365,7 @@ const shortInit = (s: string) => String(s ?? "").split(/\s+/).filter(Boolean).sl
 /** Today's Briefing: news the monitor linked to incidents, or items from sources the Collector added. */
 function BriefCard({ d, c }: { d: OverviewData; c: Console }) {
   const [tab, setTab] = useState<"news" | "added">("news");
+  const when = c.period === "daily" ? "today" : `last ${d.added.days} days`;
   return (
     <>
       <div className="ch"><I n="news" /><h3>Today&apos;s Briefing</h3>
@@ -336,19 +375,28 @@ function BriefCard({ d, c }: { d: OverviewData; c: Console }) {
         <button role="tab" aria-selected={tab === "news"} className={tab === "news" ? "on" : ""} onClick={() => setTab("news")}>
           News</button>
         <button role="tab" aria-selected={tab === "added"} className={tab === "added" ? "on" : ""} onClick={() => setTab("added")}
-          title={`Items from sources you added, last ${d.added.days} days`}>From added sources <b className="tab-n">{d.added.count}</b></button>
+          title={`Items from sources you added, ${when}`}>From added sources <b className="tab-n">{d.added.count}</b></button>
       </div>
       <div className="fitlist">
         {tab === "news"
-          ? d.news.length ? d.news.slice(0, 10).map((i) => <NewsItem key={i.id} i={i} now={d.now} c={c} />) : <Empty>No news reports in this period.</Empty>
+          ? d.news.length ? uniqueNews(d.news).slice(0, 10).map((i) => <NewsItem key={i.id} i={i} now={d.now} c={c} />) : <Empty>No news reports {c.period === "daily" ? "today" : "in this period"}.</Empty>
           : d.added.items.length ? d.added.items.slice(0, 10).map((i: Row) => <AddedRow key={i.item_id} i={i} now={d.now} c={c} />)
-            : <Empty>Nothing from added sources in the last {d.added.days} days. <button className="lnk" onClick={() => c.openSources("add")}>Add a source</button></Empty>}
+            : <Empty>Nothing from added sources {when === "today" ? "today" : `in the ${when}`}. <button className="lnk" onClick={() => c.openSources("add")}>Add a source</button></Empty>}
       </div>
     </>
   );
 }
 
-export function NewsItem({ i, now, c }: { i: Row; now: string; c: Console }) {
+/** The same headline linked to two incidents (one story, two places) is shown once. */
+function uniqueNews(rows: Row[]) {
+  const seen = new Set<string>();
+  return rows.filter((r) => {
+    const k = fullTitle(r).toLowerCase().replace(/\s+/g, " ").trim();
+    return seen.has(k) ? false : (seen.add(k), true);
+  });
+}
+
+export function NewsItem({ i, now, c, showDept }: { i: Row; now: string; c: Console; showDept?: boolean }) {
   const outlets: string[] = i.outletNames ?? [];
   return (
     <button className="brief" onClick={() => c.openInc(i.id)}>
@@ -356,6 +404,7 @@ export function NewsItem({ i, now, c }: { i: Row; now: string; c: Console }) {
       <span style={{ minWidth: 0, flex: 1 }}>
         <b>{fullTitle(i)}</b>
         <span className="loc">{outlets.length ? outlets.join(", ") : "News"} · {i.zone_name ?? "Chennai"} · {rel(i.t, now)}</span>
+        {showDept && !i.assigned && <span className="routed"><I n="gov" />Belongs to {i.dept_name ?? i.dept}</span>}
         {i.assigned && <span className="routed"><I n="send" />Sent to {i.assigned.officer_designation ?? i.dept_name}</span>}
       </span>
     </button>
@@ -364,8 +413,9 @@ export function NewsItem({ i, now, c }: { i: Row; now: string; c: Console }) {
 
 // ==================================================== environment & markets ==
 
+/** Page 4: weather, water and prices for the whole district. No zone or department filter applies here. */
 export function EnvPage({ d, ins, c }: { d: OverviewData; ins: Insights | null; c: Console }) {
-  const env = useEnv(d, c.geo, c);
+  const env = useEnv(d, c.geo, c, true);
   let ix = 0;
   const iv = () => ({ "--i": ix++ }) as React.CSSProperties;
   return (
@@ -373,8 +423,7 @@ export function EnvPage({ d, ins, c }: { d: OverviewData; ins: Insights | null; 
       <RainCard d={d} c={c} env={env} style={iv()} />
       <AqiCard c={c} d={d} env={env} style={iv()} />
       <LakeCard c={c} d={d} env={env} style={iv()} />
-      <article className="card" style={{ ...iv(), gridColumn: "span 7" }}><MarketsCard ins={ins} c={c} /></article>
-      <article className="card" style={{ ...iv(), gridColumn: "span 5" }}><StoriesCard d={d} c={c} /></article>
+      <article className="card mk-card" style={{ ...iv(), gridColumn: "1 / -1" }}><MarketsCard ins={ins} c={c} /></article>
     </section>
   );
 }
@@ -389,9 +438,10 @@ interface Picked { kind: Kind; stations: Station[]; label: string }
  * stations inside the zone, else the nearest one (named, with its distance);
  * with no zone it averages every station. The card's picker can override it.
  */
-function useEnv(d: OverviewData, geo: MapGeo | null, c: Console) {
+function useEnv(d: OverviewData, geo: MapGeo | null, c: Console, district = false) {
   const b = d.bottom;
-  const z = d.zone && geo ? geo.zones.find((x) => x.zone === d.zone) : null;
+  const zoneNo = district ? null : d.zone;
+  const z = zoneNo && geo ? geo.zones.find((x) => x.zone === zoneNo) : null;
   const zoneName = c.zoneName;
   const km = (st: Station) => {
     if (!z) return 0;
@@ -402,8 +452,8 @@ function useEnv(d: OverviewData, geo: MapGeo | null, c: Console) {
     const sel = c.envSel[kind] ?? "auto";
     const one = all.find((s) => s.id === sel);
     if (one) return { kind, stations: [one], label: one.name };
-    if (sel === "all" || !d.zone || !all.length) return { kind, stations: all, label: all.length === 1 ? all[0].name : `Average of ${all.length} ${noun}` };
-    const inside = all.filter((s) => s.zone === d.zone);
+    if (sel === "all" || !zoneNo || !all.length) return { kind, stations: all, label: all.length === 1 ? all[0].name : `Average of ${all.length} ${noun}` };
+    const inside = all.filter((s) => s.zone === zoneNo);
     if (inside.length) return { kind, stations: inside, label: inside.length === 1 ? `${inside[0].name} (in ${zoneName})` : `${inside.length} ${noun} in ${zoneName}` };
     if (!z) return { kind, stations: all, label: `Average of ${all.length} ${noun}` };
     const near = [...all].sort((a, y) => km(a) - km(y))[0];
@@ -430,10 +480,9 @@ function combine(stations: Station[], key: (t: string) => string = (t) => t) {
 
 function StationPicker({ c, kind, all }: { c: Console; kind: Kind; all: Station[] }) {
   return (
-    <select className="sel" style={{ marginLeft: "auto", maxWidth: 150 }} value={c.envSel[kind] ?? "auto"} aria-label="Choose station"
+    <select className="sel" style={{ marginLeft: "auto", maxWidth: 170 }} value={c.envSel[kind] ?? "auto"} aria-label="Choose station"
       onChange={(e) => c.setEnvSel(kind, e.target.value)}>
-      <option value="auto">{c.zone ? "Selected zone" : "All (average)"}</option>
-      {c.zone && <option value="all">All (average)</option>}
+      <option value="auto">All stations (average)</option>
       {all.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
     </select>
   );

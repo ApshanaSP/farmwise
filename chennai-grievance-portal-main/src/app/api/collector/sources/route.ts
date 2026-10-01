@@ -27,7 +27,7 @@ const Body = z.object({
   passField: z.string().trim().max(64).optional().nullable(),
   username: z.string().trim().max(255).optional().nullable(),
   secret: z.string().max(2000).optional().nullable(),
-  refreshMinutes: z.number().int().min(15).max(1440).default(60),
+  refreshMinutes: z.number().int().min(15).max(1440).default(1440),
   authorized: z.literal(true, { errorMap: () => ({ message: "Confirm that you are authorized to use this source." }) })
 });
 

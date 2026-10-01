@@ -1,0 +1,288 @@
+/* District IQ - Department Officer console. Builds on the Collector console's stylesheet
+   (collector.css, scoped under .dic) and adds only what the officer screens need.
+   Officer-only classes start with "o" so they never collide with the Collector's. */
+
+.dic .st-await{background:#FFF4D6;color:#9A6B00}
+.dic .chip-portal{background:var(--violet-soft);color:var(--violet)}
+.dic .chip-src{background:var(--accent-soft);color:var(--accent-2)}
+.dic .chip-pol{background:var(--teal-soft);color:var(--teal)}
+.dic .chip-np{background:var(--surface-2);color:var(--text);border:1px solid var(--line);font-weight:600}
+.dic .btn.act{background:linear-gradient(135deg,#EE8414,#C96A05);box-shadow:0 4px 12px rgba(224,115,13,.3)}
+.dic .btn.warn{background:var(--high-soft);color:var(--high);box-shadow:none}
+.dic .btn.done{background:var(--low-soft);color:var(--low);box-shadow:none;cursor:default}
+.dic .ofeed{cursor:default}
+
+/* ---------- department banner ---------- */
+.dic .ohero{flex:none;position:relative;overflow:hidden;display:flex;align-items:center;gap:14px;padding:7px 16px;border-radius:16px;color:#fff;
+  background:radial-gradient(90% 180% at 100% 0%,rgba(122,178,255,.55) 0%,transparent 55%),linear-gradient(118deg,#0A3494 0%,#1257D6 55%,#2C78FA 100%);
+  box-shadow:0 12px 30px -12px rgba(18,87,214,.6)}
+.dic .ohero:before{content:"";position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,.06) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.06) 1px,transparent 1px);
+  background-size:22px 22px;-webkit-mask-image:linear-gradient(90deg,transparent,#000 40%,#000);mask-image:linear-gradient(90deg,transparent,#000 40%,#000);pointer-events:none}
+.dic .ohero>*{position:relative}
+.dic .ohero-ic{width:38px;height:38px;border-radius:12px;background:rgba(255,255,255,.16);display:grid;place-items:center;border:1px solid rgba(255,255,255,.25);flex:none}
+.dic .ohero-ic .ic{width:21px;height:21px}
+.dic .oeyebrow{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#BCD3FF;display:flex;gap:6px;flex-wrap:wrap}
+.dic .ohero-t{min-width:0;flex:0 1 auto}
+.dic .ohero h1{font-size:21px;font-weight:800;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dic .ohero .oeyebrow{white-space:nowrap;flex-wrap:nowrap;overflow:hidden}
+.dic .ohero-head .route{display:block;max-width:260px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dic .ohero .fsel{flex:none}
+.dic .ohero h1 .lt{font-weight:500;color:#D4E3FF}
+/* when the banner is full, "| Officer Dashboard" gives way before the department name does */
+.dic.fit .ohero h1{display:flex;gap:.28em;min-width:0}
+.dic.fit .ohero h1 .nm{flex:none;max-width:100%;overflow:hidden;text-overflow:ellipsis}
+.dic.fit .ohero h1 .lt{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.dic .ohero .fsel select{max-width:170px;text-overflow:ellipsis}
+.dic .oupd b{white-space:nowrap}
+.dic .ohero .fchip{background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.3)}
+.dic .ohero-sp{flex:1}
+.dic .ohero-meta{text-align:right;font-size:12px;color:#C7DAFF;line-height:1.45;flex:none;max-width:320px}
+.dic .ohero-meta b{color:#fff;font-weight:600}
+.dic .ohero-head{display:flex;align-items:center;gap:12px;flex:none;font-size:12.5px;color:#D4E3FF;border-left:1px solid rgba(255,255,255,.2);padding-left:16px}
+.dic .ohero-head b{display:block;color:#fff;font:700 14px var(--dic-display),sans-serif}
+.dic .ohero-head .avatar{background:#fff;color:var(--accent-2);width:38px;height:38px;border-radius:12px}
+.dic .btn-w{display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border-radius:10px;background:#fff;color:var(--accent-2);font-weight:700;font-size:13px;white-space:nowrap}
+.dic .btn-w:hover{background:#EAF1FF}
+
+/* ---------- KPI tiles that switch the table tab ---------- */
+.dic .kpi.on{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.dic .okpis .kpi{padding:6px 14px 6px 16px}
+.dic .okpis .kpi-ic{width:40px;height:40px;border-radius:12px}
+.dic .okpis .kpi-ic .ic{width:21px;height:21px}
+.dic .okpis .kpi-n{font-size:24px}
+
+/* ---------- pages, laid out like the Collector console (fits the window, no page scroll) ---------- */
+/* page 1 uses the Collector's .p1 grid: map | department snapshot / severity, my work, briefing */
+.dic .op1{grid-template-areas:"map snap snap snap" "map sev tasks brief"}
+/* page 2: grievance board | what needs you now / Collector feedback */
+.dic .op2{flex:1;min-height:0;display:grid;gap:12px;grid-template-columns:minmax(0,1.9fr) minmax(0,1fr);grid-template-rows:minmax(0,1.25fr) minmax(0,1fr);
+  grid-template-areas:"q pri" "q fb"}
+.dic .op2 .o-q{grid-area:q}.dic .op2 .o-pri{grid-area:pri}.dic .op2 .o-fb{grid-area:fb}
+/* page 3: the department's data, one card per source */
+.dic .op3{flex:1;min-height:0;display:grid;gap:12px}
+/* page 4: trends */
+.dic .op4{flex:1;min-height:0;display:grid;gap:12px;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr) minmax(0,1fr)}
+/* the department in the filter row: fixed, not a choice */
+.dic .odept-chip{cursor:default;padding:0 12px;max-width:300px;overflow:hidden;text-overflow:ellipsis}
+.dic .odept-chip .ic{width:15px;height:15px;color:var(--accent)}
+/* returned work in My Work */
+.dic button.task-rule.ret{background:var(--high-soft);color:#8A4A06;text-align:left;cursor:pointer}
+.dic button.task-rule.ret .ic{color:var(--high)}
+.dic .op1 .task-f .chip{font-size:11.5px;padding:2px 7px}
+.dic .o-map .map-leg{top:10px;bottom:auto}
+/* ---------- what needs you now ---------- */
+.dic .opri{display:flex;gap:11px;align-items:center;padding:9px 6px;border-bottom:1px solid var(--line-2);width:100%;text-align:left;border-radius:10px}
+.dic .opri:last-of-type{border-bottom:0}
+.dic .opri:hover{background:var(--accent-soft)}
+.dic .opri b{display:block;font-size:13.5px;font-weight:700;line-height:1.3;color:var(--text)}
+.dic .opri small{display:block;color:var(--text-3);font-size:12.5px;line-height:1.35;margin-top:1px}
+.dic .opri .opri-go{width:16px;height:16px;color:var(--text-3);flex:none}
+.dic .opri-load{font-size:12.5px;color:var(--text-3);padding:8px 6px}
+/* ---------- department insight tiles ---------- */
+.dic .otile .ch{flex-wrap:wrap}
+.dic .otile{min-height:0}
+.dic .otile-b{flex:1;padding:0 14px 8px;display:flex;flex-direction:column;gap:8px;min-height:0;overflow:hidden}
+.dic .otile .oin-k{grid-template-columns:repeat(4,minmax(0,1fr))}
+.dic .otile .oin-kpi{padding:8px 10px}
+.dic .otile .oin-kpi small{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dic .otile .oin-kpi b{font-size:20px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dic .otile .oin-kpi span{white-space:normal;font-size:12px;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.dic .otile .oin-n{font-size:13px}
+.dic .otile .oin-n li{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.dic .otile .oin-n{flex:none;padding:6px 10px 6px 24px}
+.dic .otile .oin-chart{flex:1;min-height:90px;height:auto}
+.dic .otile .oin-chart.hb-c{overflow:hidden}
+.dic .otile-f{flex:none;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 14px 9px;border-top:1px solid var(--line-2);font-size:12px;color:var(--text-3)}
+.dic .otile-f>span{display:flex;align-items:center;gap:5px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dic .otile-f .ic{width:13px;height:13px}
+.dic .otile-f .more{display:inline-flex;align-items:center;gap:3px;color:var(--accent);font-weight:700;font-size:13px;padding:3px 6px;border-radius:8px;flex:none}
+.dic .otile-f .more:hover{background:var(--accent-soft)}
+.dic .otile-f .more .ic{width:14px;height:14px}
+/* ---------- signed-in officer in the top bar ---------- */
+.dic .top .ome .who{display:flex;flex-direction:column;line-height:1.15;text-align:left;max-width:190px}
+.dic .ome .who small{font-size:11px;color:var(--text-3);font-weight:600;text-transform:uppercase;letter-spacing:.05em}
+.dic .ome .who b{font:700 13.5px var(--dic-display),sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dic .o-tr .cb{display:flex;flex-direction:column;gap:4px}
+.dic .o-tr .sel{align-self:flex-end;height:28px;font-size:12.5px;max-width:100%}
+.dic .ohero .fsel{height:36px;background:rgba(255,255,255,.14);border-color:rgba(255,255,255,.3);color:#D4E3FF}
+.dic .ohero .fsel .ic{color:#fff}
+.dic .ohero .fsel select{color:#fff;height:32px}
+.dic .ohero .fsel select option{color:var(--text)}
+.dic .map-leg span{display:flex;align-items:center;gap:8px;padding:2px 6px}
+.dic .o-list{flex:1;min-height:0;overflow:auto;padding:0 14px 12px}
+.dic .brief p{margin:2px 0 3px;color:var(--text-2);font-size:12.5px;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.dic .news-ol{display:flex;flex-wrap:wrap;gap:5px;align-items:center;font-size:12px;color:var(--text-3)}
+.dic .o-cat .cb,.dic .o-area .cb{overflow:auto}
+
+/* ---------- grievances table ---------- */
+.dic .otabs{display:flex;gap:2px;background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:2px;margin-left:auto;flex:none}
+.dic .otabs button{white-space:nowrap;padding:4px 10px;border-radius:8px;font-size:12.5px;font-weight:700;color:var(--text-2)}
+.dic .otabs button.on{background:#fff;color:var(--accent);box-shadow:0 1px 4px rgba(11,40,100,.12)}
+.dic .o-q .ch h3 span{font-size:12.5px}
+.dic .o-q .pgr{flex:none}
+.dic .o-q .cb{display:flex;flex-direction:column;padding:0 12px 10px}
+.dic .o-q .tbl-wrap{flex:1;min-height:0}
+.dic .o-q table{table-layout:fixed;font-size:13px}
+.dic .o-q td{padding:5px 8px;overflow:hidden;text-overflow:ellipsis}
+.dic .o-q th{padding:7px 8px;overflow:hidden;text-overflow:ellipsis;letter-spacing:.02em}
+.dic .o-q .chip,.dic .o-q .st{font-size:11.5px;padding:2px 7px}
+.dic .o-q .btn.sm{padding:5px 8px;font-size:12px;gap:4px}
+.dic .o-q .btn.sm .ic{width:14px;height:14px}
+.dic .osi{display:inline-flex;align-items:center;gap:2px;height:22px;padding:0 4px;border-radius:7px;font:700 11.5px var(--dic-sans),sans-serif;margin-right:2px}
+.dic .osi .ic{width:13px;height:13px}
+.dic tr.flash td{animation:o-flash 1.8s ease-out}
+@keyframes o-flash{0%{background:#FFF1C2}100%{background:transparent}}
+.dic .o-state{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:26px 10px;color:var(--text-3);font-size:13.5px;text-align:center}
+.dic .o-state.err{color:var(--sev)}
+.dic .o-skel td span{display:block;height:12px;border-radius:6px;background:linear-gradient(90deg,var(--surface-2),#E6EDF9,var(--surface-2));background-size:200% 100%;animation:o-shimmer 1.2s linear infinite}
+@keyframes o-shimmer{from{background-position:200% 0}to{background-position:-200% 0}}
+
+/* ---------- grievance drawer ---------- */
+.dic .odrawer{position:fixed;top:0;right:0;bottom:0;width:min(520px,100%);background:#fff;z-index:85;box-shadow:var(--shadow-lg);display:flex;flex-direction:column;animation:o-slide .24s cubic-bezier(.2,.8,.2,1)}
+@keyframes o-slide{from{transform:translateX(30px);opacity:0}}
+.dic .odrawer-h{padding:16px 20px 14px;background:linear-gradient(118deg,#0A3494,#1560E8 70%,#3B84FF);color:#fff;display:flex;flex-direction:column;gap:7px;position:relative}
+.dic .odrawer-h .xbtn{position:absolute;right:14px;top:12px}
+.dic .odrawer-h h2{font-size:19px;font-weight:800;padding-right:44px;line-height:1.3}
+.dic .odrawer-h .meta-row{color:#CFE0FF}
+.dic .odrawer-h .chip,.dic .odrawer-h .st{box-shadow:0 0 0 1px rgba(255,255,255,.45)}
+.dic .odrawer-b{padding:14px 20px;overflow:auto;display:flex;flex-direction:column;gap:16px;flex:1;min-height:0}
+.dic .odrawer-f{padding:12px 20px;border-top:1px solid var(--line);display:flex;gap:10px;flex-wrap:wrap;align-items:center;background:var(--surface-2)}
+.dic .odrawer-f .hint{font-size:12.5px;color:var(--text-3)}
+.dic .meta-row{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;font-size:12.5px;color:var(--text-3)}
+.dic .meta-row .ic{width:13px;height:13px}
+.dic .dgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.dic .dgrid div{background:var(--surface-2);border:1px solid var(--line-2);border-radius:10px;padding:8px 10px;min-width:0}
+.dic .dgrid small{display:block;color:var(--text-3);font-size:11px;text-transform:uppercase;letter-spacing:.06em}
+.dic .dgrid b{font-weight:600;font-size:13.5px;overflow-wrap:anywhere}
+.dic .sec-t{font:800 12px var(--dic-display),sans-serif;text-transform:uppercase;letter-spacing:.09em;color:var(--accent);margin-bottom:7px}
+.dic .vtl{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.dic .vtl li{display:grid;grid-template-columns:14px 118px 1fr;gap:9px;position:relative;padding:0 0 11px;font-size:13px}
+.dic .vtl li:before{content:"";position:absolute;left:6px;top:13px;bottom:0;width:2px;background:var(--line)}
+.dic .vtl li:last-child:before{display:none}
+.dic .vtl li i{width:13px;height:13px;border-radius:50%;background:var(--accent);margin-top:3px;box-shadow:0 0 0 3px var(--accent-soft)}
+.dic .vtl li.fin i{background:var(--low);box-shadow:0 0 0 3px var(--low-soft)}
+.dic .vtl li.esc i{background:var(--sev);box-shadow:0 0 0 3px var(--sev-soft)}
+.dic .vtl time{color:var(--text-3);font-size:12px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.dic .vtl small{display:block;color:var(--text-3);font-size:12px}
+.dic .osrc{display:flex;gap:10px;padding:7px 0;border-bottom:1px solid var(--line-2);align-items:flex-start}
+.dic .osrc:last-child{border-bottom:0}
+.dic .osrc .sic{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;flex:none}
+.dic .osrc b{display:block;font-size:13px}
+.dic .osrc small{display:block;color:var(--text-3);font-size:12px}
+.dic .osrc q{display:block;color:var(--text-2);font-size:12.5px;margin-top:1px;quotes:none}
+.dic .osrc a{color:var(--accent);font-weight:600;text-decoration:none}
+.dic .osrc a:hover{text-decoration:underline}
+
+/* ---------- workflow stepper ---------- */
+.dic .wfs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;position:relative}
+.dic .wfs .rail{position:absolute;top:10px;left:12.5%;right:12.5%;height:3px;background:var(--line);border-radius:2px}
+.dic .wfs .rail i{position:absolute;left:0;top:0;bottom:0;background:var(--accent);border-radius:2px}
+.dic .wfs div{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:11.5px;font-weight:600;color:var(--text-3);position:relative;text-align:center}
+.dic .wfs s{width:22px;height:22px;border-radius:50%;background:#fff;border:3px solid var(--line);display:grid;place-items:center;color:#fff;text-decoration:none}
+.dic .wfs .dn s{background:var(--accent);border-color:var(--accent)}
+.dic .wfs .dn{color:var(--text)}
+.dic .wfs .cur s{border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-soft)}
+.dic .wfs .cur{color:var(--accent)}
+.dic .wfs s .ic{width:11px;height:11px;stroke-width:3}
+
+/* ---------- completion report ---------- */
+.dic .rep{background:var(--surface-2);border:1px solid var(--line-2);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:8px}
+.dic .rep q{display:block;font-size:13.5px;color:var(--text);quotes:none}
+.dic .rep .chip{white-space:normal}
+.dic .ph-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.dic .ph-grid figure{margin:0;position:relative}
+.dic .ph-grid img{display:block;width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:9px;border:1px solid var(--line);background:#fff}
+.dic .ph-x{position:absolute;top:4px;right:4px;width:24px;height:24px;border-radius:7px;background:rgba(10,26,60,.72);color:#fff;display:grid;place-items:center}
+.dic .ph-x .ic{width:13px;height:13px}
+.dic .odrop{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;border:2px dashed #C4D4F0;border-radius:12px;padding:16px;color:var(--text-2);text-align:center;cursor:pointer;background:var(--surface-2)}
+.dic .odrop:hover,.dic .odrop:focus-within,.dic .odrop.over{border-color:var(--accent);background:var(--accent-soft)}
+.dic .odrop input{position:absolute;width:1px;height:1px;opacity:0}
+.dic .odrop .ic{width:24px;height:24px;color:var(--accent)}
+.dic .fld{display:flex;flex-direction:column;gap:6px}
+.dic .fld textarea{min-height:100px;border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:14px;resize:vertical;outline:none;background:#fff}
+.dic .fld textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.dic .fld small{color:var(--text-3);font-size:12px}
+.dic .oerr{color:var(--sev);font-size:13px;font-weight:600}
+.dic .osend{display:flex;flex-direction:column;gap:14px}
+.dic .osend-f{display:flex;gap:8px;justify-content:flex-end}
+
+/* ---------- banner: head of department, filters, last updated ---------- */
+.dic .ohero-head small{display:block;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#BCD3FF}
+.dic .oupd{display:flex;align-items:center;gap:9px;flex:none;font-size:12px;color:#C7DAFF;line-height:1.35;text-align:left;border-left:1px solid rgba(255,255,255,.2);padding-left:14px}
+.dic .oupd b{display:block;color:#fff;font:700 13.5px var(--dic-display),sans-serif}
+.dic .oupd .ic{width:20px;height:20px;color:#fff;flex:none}
+.dic .oupd i{width:8px;height:8px;border-radius:50%;background:#3FE39A;box-shadow:0 0 0 3px rgba(63,227,154,.25);flex:none}
+.dic .oupd i.warn{background:#FFC53D;box-shadow:0 0 0 3px rgba(255,197,61,.25)}
+.dic .ohero .fsel select:disabled{opacity:.6}
+
+/* ---------- department insights (tiles above; one source in full in its pop-up) ---------- */
+.dic .oin-badges{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap}
+.dic .oin-b{display:flex;flex-direction:column;gap:10px}
+.dic .oin-w .oin-badges{margin-left:8px}
+.dic .oin-w{display:flex;align-items:center;flex-wrap:wrap;gap:4px;font-size:12.5px;color:var(--text-3)}
+.dic .oin-w .ic{width:14px;height:14px}
+.dic .oin-fail{color:var(--high);font-weight:600}
+.dic .oin-k{display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:8px}
+.dic .oin-kpi{display:flex;flex-direction:column;gap:1px;padding:9px 12px;border-radius:12px;background:var(--surface-2);border:1px solid var(--line-2);border-left:4px solid var(--accent);min-width:0}
+.dic .oin-kpi small{font-size:12px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.04em}
+.dic .oin-kpi b{font:800 22px/1.2 var(--dic-display),sans-serif}
+.dic .oin-kpi span{font-size:12.5px;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dic .oin-kpi.k-sev{border-left-color:var(--sev)}.dic .oin-kpi.k-sev b{color:var(--sev)}
+.dic .oin-kpi.k-high{border-left-color:var(--high)}
+.dic .oin-kpi.k-med{border-left-color:var(--med)}
+.dic .oin-kpi.k-low{border-left-color:var(--low)}
+.dic .oin-kpi.k-violet{border-left-color:var(--violet)}
+.dic .oin-n{margin:0;padding:9px 12px 9px 28px;border-radius:12px;background:#EEF5FF;font-size:13.5px;line-height:1.5;color:var(--text)}
+.dic .oin-n li{margin:1px 0}
+.dic .oin-c{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+.dic .oin-chart{height:200px;display:flex;flex-direction:column;border:1px solid var(--line-2);border-radius:12px;padding:8px 10px}
+.dic .oin-chart.hb-c{height:auto;max-height:260px;overflow:auto}
+.dic .oin-chart .hb{height:auto}
+.dic .oin-ct{font:800 12.5px var(--dic-display),sans-serif;color:var(--accent-2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px}
+.dic .oin-t .tbl-wrap{max-height:260px;border:1px solid var(--line-2);border-radius:12px}
+.dic .oin-t td{white-space:normal;font-size:13px;padding:6px 9px}
+.dic .oin-t tr.static{cursor:default}
+.dic .oin-t tr.static:hover{background:transparent}
+
+/* ---------- phones and narrow windows: one scrolling column ---------- */
+.dic:not(.fit) .op2,.dic:not(.fit) .op3,.dic:not(.fit) .op4{grid-template-columns:minmax(0,1fr)!important;grid-template-rows:none!important;grid-template-areas:none}
+.dic:not(.fit) .op2>*,.dic:not(.fit) .op3>*,.dic:not(.fit) .op4>*{grid-area:auto;height:420px}
+.dic:not(.fit) .otile .oin-k{grid-template-columns:1fr 1fr}
+.dic:not(.fit) .oupd{border:0;padding:0}
+.dic:not(.fit) .ohero{flex-wrap:wrap}
+.dic:not(.fit) .ohero h1{white-space:normal;font-size:19px}
+.dic:not(.fit) .ohero-head{border:0;padding:0}
+.dic:not(.fit) .ohero-meta{text-align:left;max-width:none}
+
+.dic:not(.fit) .top .ome .who{display:none}
+.dic:not(.fit) .o-q .ch{flex-wrap:wrap}
+.dic:not(.fit) .otabs{margin-left:0;overflow-x:auto;max-width:100%}
+.dic:not(.fit) .vtl li{grid-template-columns:14px 96px 1fr}
+.dic:not(.fit) .ph-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+.dic.ofc:not(.fit) .top{gap:8px}
+.dic.ofc:not(.fit) .me>.ic{display:none}
+.dic.ofc:not(.fit) .okpis .kpi-ic{display:none}
+.dic.ofc:not(.fit) .okpis .kpi-l,.dic.ofc:not(.fit) .okpis .kpi-d{white-space:normal}
+
+/* ---------- seven KPI tiles: the four workflow stages, the Collector's two snapshot tiles, due in 24 hours ---------- */
+.dic .okpis{grid-template-columns:repeat(7,minmax(0,1fr));gap:9px}
+.dic .okpis .kpi{padding:7px 9px 7px 10px;gap:8px;align-items:flex-start}
+.dic .okpis .kpi-ic{width:32px;height:32px;border-radius:10px;margin-top:2px}
+.dic .okpis .kpi-ic .ic{width:18px;height:18px}
+.dic .okpis .kpi-l{font-size:12.5px}
+.dic .okpis .kpi-n{font-size:23px}
+/* the line under the number wraps to two lines rather than being cut */
+.dic.fit .okpis .kpi-d{white-space:normal;font-size:11.5px;line-height:1.25;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.dic .okpis .kpi-d{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dic:not(.fit) .okpis{grid-template-columns:1fr 1fr}
+
+/* ---------- Collector view ---------- */
+.dic .oback{text-decoration:none;flex:none}
+.dic .oback-f{display:flex;gap:8px;align-items:center;flex:1;min-width:0}
+.dic .oback-f input{flex:1;min-width:0;height:38px;border:1px solid var(--line);border-radius:10px;padding:0 12px;font-size:14px;outline:none;background:#fff}
+.dic .oback-f input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+/* six sources in three columns: the figures go 2 x 2, without their sub-lines (Details has them) */
+.dic .op3.cols3 .otile .oin-k{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+.dic .op3.cols3 .otile .oin-kpi{padding:5px 9px;flex-direction:row;align-items:baseline;justify-content:space-between;gap:6px}
+.dic .op3.cols3 .otile .oin-kpi span{display:none}
+.dic .op3.cols3 .otile .oin-kpi b{font-size:17px;flex:none;max-width:60%}

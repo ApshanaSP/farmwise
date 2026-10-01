@@ -30,6 +30,14 @@ def _read(p) -> pd.DataFrame:
     return pd.read_csv(p, encoding="utf-8-sig") if p.exists() else pd.DataFrame()
 
 
+def valid_reading(v: pd.Series, col: str) -> pd.Series:
+    """IMD fills a missing reading with 999 / 9999 (or -99). Chennai's heaviest recorded day is about
+    500 mm, so a value that large or negative is "no reading", not rain; dropping it keeps one station
+    from turning the district average into very heavy rain."""
+    v = pd.to_numeric(v, errors="coerce")
+    return v.notna() & (v >= -50) & (v < (900 if col == "rainfall_mm" else 500))
+
+
 def load(settings: Settings, ref: Reference) -> dict[str, pd.DataFrame]:
     obs, events, docs, forecasts = [], [], [], pd.DataFrame()
     fac_rows = []
@@ -42,7 +50,7 @@ def load(settings: Settings, ref: Reference) -> dict[str, pd.DataFrame]:
         for metric, col, unit in (("rainfall_24h_mm", "rainfall_mm", "mm"), ("temp_max_c", "temp_max_c", "°C"),
                                   ("temp_min_c", "temp_min_c", "°C"), ("temp_departure_c", "temp_departure_c", "°C"),
                                   ("humidity_pct", "humidity_pct", "%")):
-            s = o[o[col].notna()]
+            s = o[valid_reading(o[col], col)]
             if len(s):
                 obs.append(pd.DataFrame({"metric": metric, "value": s[col], "unit": unit, "place_type": "facility",
                                          "place_id": "IMD-" + s["station_id"].astype(str), "place_name": s["station_name"],

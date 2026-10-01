@@ -8,7 +8,7 @@ import type { Console } from "./CollectorApp";
 type Tab = "sources" | "add" | "ocr" | "audit";
 const KIND: Record<string, string> = { pipeline: "Pipeline feed", agmarknet: "Public API", rss: "RSS / Atom feed", html: "Web page", json: "JSON API", ocr: "Upload + OCR" };
 const STATUS: Record<string, [string, string]> = {
-  ok: ["Healthy", "st-resolved"], stale: ["Stale", "st-progress"], failing: ["Failing", "st-progress"], login_failed: ["Login failed", "st-progress"], new: ["Not run yet", "st-review"]
+  ok: ["Healthy", "st-resolved"], partial: ["Partial", "st-review"], stale: ["Stale", "st-progress"], failing: ["Failing", "st-progress"], login_failed: ["Login failed", "st-progress"], new: ["Not run yet", "st-review"]
 };
 
 export function SourcesBody({ c, initial = "sources" }: { c: Console; initial?: Tab }) {
@@ -67,7 +67,7 @@ function SourceList({ c }: { c: Console }) {
   const ok = rows.filter((r) => r.status === "ok").length;
   return (
     <>
-      <p className="sub">{ok} of {rows.length} sources healthy. Added sources refresh on their own interval; pipeline feeds refresh every 30 minutes.
+      <p className="sub">{ok} of {rows.length} sources healthy. Added sources refresh on their own interval (daily by default); all feeds are collected once a day at 6:00 AM.
         Every run is logged, and failures show the reason.</p>
       <div className="tbl-wrap">
         <table>
@@ -83,7 +83,7 @@ function SourceList({ c }: { c: Console }) {
                     {s.auth !== "none" && <small className="dim" style={{ display: "block" }}><I n="shield" /> Signs in as {s.username} ({s.auth}){s.session_expires_at ? ` · session until ${fmtShort(s.session_expires_at)}` : ""}</small>}
                   </td>
                   <td className="dim">{KIND[s.kind] ?? s.kind}</td>
-                  <td><span className={`st ${cls}`}>{st}</span>{s.last_error && s.status !== "ok" && <small className="dim" style={{ display: "block", whiteSpace: "normal", maxWidth: 200 }}>{s.last_error}</small>}</td>
+                  <td><span className={`st ${cls}`}>{st}</span>{s.last_error && s.status !== "ok" && <small className="dim" title={s.error_detail ?? undefined} style={{ display: "block", whiteSpace: "normal", maxWidth: 220 }}>{s.last_error}</small>}</td>
                   <td className="dim">{s.newest ? fmtShort(s.newest) : "—"}</td>
                   <td className="num">{Number(s.rows ?? 0).toLocaleString("en-IN")}</td>
                   <td>
@@ -130,7 +130,7 @@ function ItemTable({ rows }: { rows: Row[] }) {
 }
 
 function AddSource({ c, done }: { c: Console; done: () => void }) {
-  const [f, setF] = useState({ name: "", url: "", kind: "auto", auth: "none", loginUrl: "", userField: "username", passField: "password", username: "", secret: "", refreshMinutes: 60, authorized: false });
+  const [f, setF] = useState({ name: "", url: "", kind: "auto", auth: "none", loginUrl: "", userField: "username", passField: "password", username: "", secret: "", refreshMinutes: 1440, authorized: false });
   const [busy, setBusy] = useState(false);
   const set = (k: string, v: unknown) => setF((x) => ({ ...x, [k]: v }));
   const submit = async (e: React.FormEvent) => {

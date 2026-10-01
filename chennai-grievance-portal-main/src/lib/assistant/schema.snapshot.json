@@ -1,0 +1,1022 @@
+{
+ "generated_at": "2026-09-29T14:36:03.357Z",
+ "source": "information_schema, MySQL 8.0.46",
+ "databases": {
+  "intel": "district_intel",
+  "ops": "district_intel_ops"
+ },
+ "tables": {
+  "intel._export_meta": {
+   "kind": "table",
+   "columns": {
+    "k": "varchar(64)",
+    "v": "text"
+   }
+  },
+  "intel.actions": {
+   "kind": "table",
+   "columns": {
+    "action_id": "varchar(32)",
+    "event_id": "varchar(32)",
+    "dept_code": "varchar(16)",
+    "office_id": "varchar(32)",
+    "owner": "varchar(255)",
+    "text": "varchar(255)",
+    "sop_step": "double",
+    "assigned_at": "datetime",
+    "due_at": "datetime",
+    "status": "varchar(32)",
+    "created_by": "varchar(64)",
+    "origin": "varchar(32)",
+    "completed_at": "datetime",
+    "verified_at": "datetime",
+    "evidence": "varchar(64)",
+    "incident_id": "varchar(64)"
+   }
+  },
+  "intel.agent_runs": {
+   "kind": "table",
+   "columns": {
+    "agent": "varchar(32)",
+    "trigger": "varchar(64)",
+    "as_of": "datetime",
+    "duration_s": "double",
+    "tools": "varchar(128)",
+    "llm_calls": "tinyint",
+    "outputs": "varchar(255)",
+    "notes": "varchar(64)"
+   }
+  },
+  "intel.alerts": {
+   "kind": "table",
+   "columns": {
+    "alert_id": "varchar(16)",
+    "type": "varchar(64)",
+    "severity": "varchar(16)",
+    "title": "varchar(255)",
+    "message": "varchar(128)",
+    "explanation": "varchar(255)",
+    "place": "varchar(128)",
+    "zone_no": "int",
+    "date": "date",
+    "category_code": "varchar(64)",
+    "incident_ids": "varchar(64)",
+    "created_at": "datetime",
+    "status": "varchar(16)"
+   }
+  },
+  "intel.anomalies": {
+   "kind": "table",
+   "columns": {
+    "date": "date",
+    "category_code": "varchar(64)",
+    "zone_no": "int",
+    "observed": "int",
+    "expected": "double",
+    "p_value": "double",
+    "ratio": "double"
+   }
+  },
+  "intel.briefings": {
+   "kind": "table",
+   "columns": {
+    "briefing_id": "varchar(64)",
+    "period": "varchar(32)",
+    "as_of": "datetime",
+    "window_start": "varchar(64)",
+    "window_end": "varchar(64)",
+    "markdown": "text",
+    "fact_pack": "text",
+    "unverified_numbers": "tinyint",
+    "unverified_list": "varchar(64)",
+    "method": "varchar(16)",
+    "attention_items": "int"
+   }
+  },
+  "intel.daily_counts": {
+   "kind": "table",
+   "columns": {
+    "date": "date",
+    "zone_no": "int",
+    "category_code": "varchar(64)",
+    "source": "varchar(32)",
+    "count": "int"
+   }
+  },
+  "intel.data_quality": {
+   "kind": "table",
+   "columns": {
+    "table": "varchar(32)",
+    "check": "varchar(128)",
+    "severity": "varchar(16)",
+    "failing": "int",
+    "total": "int",
+    "examples": "varchar(255)",
+    "action": "varchar(128)"
+   }
+  },
+  "intel.documents": {
+   "kind": "table",
+   "columns": {
+    "doc_id": "varchar(64)",
+    "article_id": "varchar(64)",
+    "story_id": "varchar(32)",
+    "story_role": "varchar(32)",
+    "outlet_count": "double",
+    "title": "text",
+    "summary": "text",
+    "body": "text",
+    "url": "text",
+    "publisher": "varchar(128)",
+    "publisher_domain": "varchar(128)",
+    "publisher_tier": "varchar(32)",
+    "reliability": "double",
+    "lang": "varchar(16)",
+    "source_kind": "varchar(32)",
+    "report_type": "varchar(64)",
+    "published_at": "datetime",
+    "fetched_at": "datetime",
+    "is_district": "tinyint",
+    "is_incident": "tinyint",
+    "incident_conf": "double",
+    "category_code": "varchar(64)",
+    "category_conf": "double",
+    "department": "varchar(16)",
+    "place_text": "varchar(64)",
+    "lat": "double",
+    "lon": "double",
+    "geo_level": "varchar(16)",
+    "dead": "double",
+    "injured": "double",
+    "event_id": "varchar(64)",
+    "linked_incident_id": "varchar(64)"
+   }
+  },
+  "intel.events": {
+   "kind": "table",
+   "columns": {
+    "event_id": "varchar(128)",
+    "source": "varchar(32)",
+    "source_record_id": "varchar(128)",
+    "deep_link": "text",
+    "snapshot_sha256": "varchar(128)",
+    "is_synthetic": "tinyint",
+    "is_overlay": "tinyint",
+    "occurred_at": "datetime",
+    "reported_at": "datetime",
+    "closed_at": "datetime",
+    "time_precision": "varchar(32)",
+    "issue_age_claimed_days": "double",
+    "title": "varchar(255)",
+    "text": "text",
+    "lang": "varchar(16)",
+    "junk_flag": "tinyint",
+    "simhash": "varchar(32)",
+    "category_src": "varchar(128)",
+    "subcategory_src": "varchar(255)",
+    "category_code": "varchar(64)",
+    "category_family": "varchar(32)",
+    "category_conf": "double",
+    "category_method": "varchar(64)",
+    "dept_src": "varchar(128)",
+    "lead_dept": "varchar(16)",
+    "support_depts": "varchar(32)",
+    "is_actionable": "tinyint",
+    "lat": "double",
+    "lon": "double",
+    "loc_precision_m": "double",
+    "place_text": "varchar(255)",
+    "ward_no": "int",
+    "zone_no": "int",
+    "taluk_code": "varchar(16)",
+    "taluk_src": "varchar(32)",
+    "geo_level": "varchar(16)",
+    "geo_method": "varchar(64)",
+    "geo_conf": "double",
+    "in_district": "tinyint",
+    "dead": "double",
+    "injured": "double",
+    "persons_affected": "double",
+    "affected_imputed": "double",
+    "vulnerable_flags": "varchar(128)",
+    "hazard_flag": "double",
+    "access_blocked": "double",
+    "blockage_minutes": "double",
+    "service_disruption": "varchar(16)",
+    "crowd_estimate": "double",
+    "weather_related": "double",
+    "claims_prior_complaint": "double",
+    "has_photo": "double",
+    "severity_score": "double",
+    "severity_level": "varchar(16)",
+    "severity_reasons": "varchar(255)",
+    "status_src": "varchar(128)",
+    "status_std": "varchar(64)",
+    "status_at": "datetime",
+    "first_action_at": "datetime",
+    "response_applicable": "tinyint",
+    "response_minutes": "double",
+    "rejection_reason_code": "varchar(64)",
+    "reopen_count": "double",
+    "assigned_office_id": "varchar(32)",
+    "officer": "varchar(255)",
+    "channel": "varchar(64)",
+    "reporter_hash": "varchar(32)",
+    "source_reliability": "double",
+    "dup_group_id": "varchar(128)",
+    "incident_id": "varchar(64)",
+    "link_prob": "double",
+    "link_method": "varchar(64)",
+    "ext_ref": "varchar(64)",
+    "ext_ref_status": "varchar(64)"
+   }
+  },
+  "intel.forecasts": {
+   "kind": "table",
+   "columns": {
+    "location_id": "varchar(128)",
+    "issued_at": "datetime",
+    "valid_from": "datetime",
+    "forecast_text": "varchar(255)",
+    "source_url": "varchar(255)"
+   }
+  },
+  "intel.gaps": {
+   "kind": "table",
+   "columns": {
+    "incident_id": "varchar(64)",
+    "title": "varchar(255)",
+    "category_code": "varchar(64)",
+    "lead_dept": "varchar(16)",
+    "zone_name": "varchar(64)",
+    "ward_no": "int",
+    "outlet_count": "tinyint",
+    "first_reported_at": "datetime",
+    "severity_level": "varchar(16)",
+    "priority_score": "double",
+    "gap_strength": "varchar(32)",
+    "suggested_action": "varchar(128)"
+   }
+  },
+  "intel.hotspots": {
+   "kind": "table",
+   "columns": {
+    "hotspot_id": "varchar(64)",
+    "category_code": "varchar(64)",
+    "incidents": "int",
+    "incidents_30d": "int",
+    "open": "int",
+    "lat": "double",
+    "lon": "double",
+    "wards": "varchar(64)",
+    "first_seen": "datetime",
+    "last_seen": "datetime",
+    "top_place": "varchar(255)"
+   }
+  },
+  "intel.incident_members": {
+   "kind": "table",
+   "columns": {
+    "incident_id": "varchar(64)",
+    "event_id": "varchar(128)",
+    "source": "varchar(32)",
+    "source_record_id": "varchar(128)",
+    "channel": "varchar(64)",
+    "reported_at": "datetime",
+    "link_prob": "double",
+    "link_method": "varchar(64)",
+    "severity_level": "varchar(16)",
+    "status_std": "varchar(64)",
+    "deep_link": "text",
+    "title": "varchar(255)",
+    "is_overlay": "tinyint",
+    "role": "varchar(32)"
+   }
+  },
+  "intel.incident_timeline": {
+   "kind": "table",
+   "columns": {
+    "event_id": "varchar(128)",
+    "at": "datetime",
+    "step": "varchar(64)",
+    "status_std": "varchar(64)",
+    "actor": "varchar(64)",
+    "note": "varchar(255)",
+    "source": "varchar(32)",
+    "incident_id": "varchar(64)"
+   }
+  },
+  "intel.incidents": {
+   "kind": "table",
+   "columns": {
+    "incident_id": "varchar(64)",
+    "category_code": "varchar(64)",
+    "category_label": "varchar(128)",
+    "family": "varchar(32)",
+    "lead_dept": "varchar(16)",
+    "depts_involved": "varchar(64)",
+    "support_depts": "varchar(32)",
+    "needs_coordination": "tinyint",
+    "first_reported_at": "datetime",
+    "occurred_at_est": "datetime",
+    "last_update_at": "datetime",
+    "ward_no": "int",
+    "zone_no": "int",
+    "zone_name": "varchar(64)",
+    "taluk_code": "varchar(16)",
+    "lat": "double",
+    "lon": "double",
+    "place_text": "varchar(255)",
+    "spread_m": "double",
+    "member_count": "int",
+    "sources": "varchar(64)",
+    "source_count": "int",
+    "channels": "varchar(255)",
+    "citizen_complaints": "int",
+    "police_reports": "int",
+    "outlet_count": "int",
+    "has_official_record": "tinyint",
+    "media_only": "tinyint",
+    "is_synthetic_any": "tinyint",
+    "is_overlay_any": "tinyint",
+    "status_std": "varchar(64)",
+    "verified": "tinyint",
+    "verified_at": "datetime",
+    "closed_at": "datetime",
+    "is_open": "tinyint",
+    "severity_score": "double",
+    "severity_level": "varchar(16)",
+    "severity_reasons": "varchar(255)",
+    "dead": "double",
+    "injured": "double",
+    "persons_affected": "double",
+    "vulnerable": "varchar(128)",
+    "weather_related": "tinyint",
+    "officer": "varchar(255)",
+    "reliability": "double",
+    "confidence": "double",
+    "needs_review": "tinyint",
+    "review_reason": "varchar(128)",
+    "sla_hours": "double",
+    "sla_due_at": "datetime",
+    "hours_open": "double",
+    "hours_to_first_action": "double",
+    "sla_basis": "varchar(32)",
+    "sla_ratio": "double",
+    "sla_breached": "tinyint",
+    "growth_24h": "int",
+    "recurrence_90d": "int",
+    "rain_coupled": "tinyint",
+    "priority_score": "double",
+    "priority_reasons": "varchar(255)",
+    "awaiting_collector": "tinyint",
+    "attention_reason": "varchar(255)",
+    "attention_flag": "tinyint",
+    "title": "varchar(255)",
+    "summary": "text",
+    "hotspot_id": "varchar(64)",
+    "action_total": "int",
+    "action_done": "int",
+    "next_action_due": "datetime"
+   }
+  },
+  "intel.kpis": {
+   "kind": "table",
+   "columns": {
+    "period": "varchar(32)",
+    "offset": "tinyint",
+    "zone_no": "double",
+    "window_start": "datetime",
+    "window_end": "datetime",
+    "incidents": "int",
+    "severe_incidents": "int",
+    "high_incidents": "int",
+    "open_incidents": "int",
+    "resolved": "int",
+    "complaints_filed": "int",
+    "complaints_open": "int",
+    "sla_breached_open": "int",
+    "median_hours_to_first_action": "double",
+    "multi_source_incidents": "int",
+    "media_only": "int"
+   }
+  },
+  "intel.link_pairs": {
+   "kind": "table",
+   "columns": {
+    "event_a": "varchar(128)",
+    "event_b": "varchar(128)",
+    "src_a": "varchar(32)",
+    "src_b": "varchar(32)",
+    "prob": "double",
+    "decision": "varchar(16)",
+    "features": "varchar(255)"
+   }
+  },
+  "intel.metrics": {
+   "kind": "table",
+   "columns": {
+    "metric": "varchar(128)",
+    "value": "text"
+   }
+  },
+  "intel.observation_signals": {
+   "kind": "table",
+   "columns": {
+    "metric": "varchar(64)",
+    "place_id": "varchar(128)",
+    "place_name": "varchar(128)",
+    "lat": "double",
+    "lon": "double",
+    "taluk_code": "varchar(16)",
+    "observed_at": "datetime",
+    "value": "double",
+    "unit": "varchar(64)",
+    "ewma7": "double",
+    "mean28": "double",
+    "zscore": "double",
+    "slope_per_day": "double",
+    "n_points": "int",
+    "detail": "varchar(128)",
+    "source": "varchar(16)",
+    "anomaly": "tinyint",
+    "days_to_full": "double"
+   }
+  },
+  "intel.observations": {
+   "kind": "table",
+   "columns": {
+    "metric": "varchar(64)",
+    "value": "double",
+    "unit": "varchar(64)",
+    "place_type": "varchar(16)",
+    "place_id": "varchar(128)",
+    "place_name": "varchar(128)",
+    "lat": "double",
+    "lon": "double",
+    "ward_no": "int",
+    "zone_no": "int",
+    "taluk_code": "varchar(16)",
+    "observed_at": "datetime",
+    "period": "varchar(16)",
+    "source": "varchar(16)",
+    "quality": "varchar(16)",
+    "is_synthetic": "tinyint",
+    "detail": "varchar(255)"
+   }
+  },
+  "intel.pwd_works": {
+   "kind": "table",
+   "columns": {
+    "work_id": "varchar(32)",
+    "work_title": "varchar(255)",
+    "work_type": "varchar(64)",
+    "asset_id": "varchar(32)",
+    "office_id": "varchar(32)",
+    "sanctioned_amount_lakh": "double",
+    "expenditure_lakh": "double",
+    "start_date": "datetime",
+    "target_date": "datetime",
+    "completion_date": "datetime",
+    "status": "varchar(32)",
+    "physical_progress_pct": "int",
+    "asset_name": "varchar(128)",
+    "latitude": "double",
+    "longitude": "double",
+    "taluk_code": "varchar(16)",
+    "spend_pct": "double",
+    "overrun_pct": "double",
+    "progress_gap_pct": "double",
+    "office": "varchar(128)"
+   }
+  },
+  "intel.ref_categories": {
+   "kind": "table",
+   "columns": {
+    "category_code": "varchar(64)",
+    "label": "varchar(128)",
+    "family": "varchar(32)",
+    "lead_dept": "varchar(16)",
+    "support_depts": "varchar(32)",
+    "base_severity": "int",
+    "rain_sensitive": "tinyint",
+    "sla_severe_h": "int",
+    "sla_high_h": "int",
+    "sla_medium_h": "int",
+    "sla_low_h": "int",
+    "link_window_h": "int",
+    "link_radius_m": "int",
+    "playbook": "varchar(255)",
+    "sla_basis": "varchar(32)"
+   }
+  },
+  "intel.ref_departments": {
+   "kind": "table",
+   "columns": {
+    "code": "varchar(16)",
+    "name": "varchar(64)",
+    "org": "varchar(128)",
+    "head": "varchar(128)",
+    "route": "varchar(128)",
+    "action_owner": "tinyint",
+    "source_names": "varchar(128)"
+   }
+  },
+  "intel.ref_facilities": {
+   "kind": "table",
+   "columns": {
+    "facility_id": "varchar(128)",
+    "type": "varchar(64)",
+    "name": "varchar(128)",
+    "lat": "double",
+    "lon": "double",
+    "taluk_code": "varchar(16)",
+    "precision_m": "int",
+    "source": "varchar(16)",
+    "capacity": "double",
+    "relevance": "varchar(32)",
+    "downstream_taluks": "varchar(128)",
+    "specialties": "varchar(128)",
+    "address": "varchar(64)",
+    "in_district": "tinyint",
+    "basin": "varchar(32)",
+    "same_as": "varchar(64)"
+   }
+  },
+  "intel.ref_offices": {
+   "kind": "table",
+   "columns": {
+    "office_id": "varchar(32)",
+    "office_name": "varchar(128)",
+    "wing": "varchar(32)",
+    "officer_name": "varchar(32)",
+    "designation": "varchar(64)",
+    "phone": "varchar(32)",
+    "email": "varchar(128)",
+    "taluk_codes_covered": "varchar(255)",
+    "dept_code": "varchar(16)",
+    "taluks": "varchar(255)"
+   }
+  },
+  "intel.ref_taluks": {
+   "kind": "table",
+   "columns": {
+    "taluk_code": "varchar(16)",
+    "name": "varchar(32)",
+    "name_ta": "varchar(32)",
+    "police_code": "varchar(16)",
+    "pwd_code": "varchar(16)",
+    "in_district": "tinyint",
+    "lat": "double",
+    "lon": "double",
+    "aliases": "varchar(255)",
+    "note": "varchar(128)"
+   }
+  },
+  "intel.ref_wards": {
+   "kind": "table",
+   "columns": {
+    "ward_no": "int",
+    "zone_no": "int",
+    "zone_name": "varchar(64)",
+    "taluk_code": "varchar(16)",
+    "taluk_vote_share": "double",
+    "area_km2": "double",
+    "centroid_lat": "double",
+    "centroid_lon": "double",
+    "adjacent_wards": "varchar(64)",
+    "flood_reports": "int",
+    "incidents_30d": "int",
+    "open_incidents": "int",
+    "open_past_deadline": "int",
+    "low_lying_index": "double",
+    "gi_star_z_30d": "double",
+    "hot_ward": "tinyint",
+    "geometry": "json"
+   }
+  },
+  "intel.ref_zones": {
+   "kind": "table",
+   "columns": {
+    "zone_no": "int",
+    "zone_name": "varchar(64)",
+    "outline": "json"
+   }
+  },
+  "intel.review_queue": {
+   "kind": "table",
+   "columns": {
+    "review_id": "varchar(32)",
+    "item_type": "varchar(32)",
+    "item_id": "varchar(255)",
+    "suggestion": "varchar(128)",
+    "reason": "varchar(255)",
+    "evidence": "text",
+    "status": "varchar(16)",
+    "created_at": "datetime"
+   }
+  },
+  "intel.source_health": {
+   "kind": "table",
+   "columns": {
+    "source": "varchar(32)",
+    "kind": "varchar(128)",
+    "last_run_at": "datetime",
+    "last_success_at": "datetime",
+    "newest_record_at": "datetime",
+    "freshness_target_min": "int",
+    "minutes_since_success": "int",
+    "status": "varchar(16)",
+    "rows": "int",
+    "endpoints_ok": "double",
+    "endpoints_total": "double",
+    "detail": "varchar(255)"
+   }
+  },
+  "intel.v_collector_queue": {
+   "kind": "view",
+   "columns": {
+    "incident_id": "varchar(64)",
+    "title": "varchar(255)",
+    "severity_level": "varchar(16)",
+    "zone_name": "varchar(64)",
+    "ward_no": "int",
+    "status_std": "varchar(64)",
+    "priority_score": "double",
+    "priority_reasons": "varchar(255)",
+    "attention_reason": "varchar(255)"
+   }
+  },
+  "intel.v_department_performance": {
+   "kind": "view",
+   "columns": {
+    "lead_dept": "varchar(16)",
+    "incidents": "bigint",
+    "open_incidents": "decimal(25,0)",
+    "open_past_deadline": "decimal(23,0)",
+    "avg_hours_to_first_action": "double"
+   }
+  },
+  "intel.v_media_gaps": {
+   "kind": "view",
+   "columns": {
+    "incident_id": "varchar(64)",
+    "title": "varchar(255)",
+    "category_label": "varchar(128)",
+    "zone_name": "varchar(64)",
+    "outlet_count": "int",
+    "first_reported_at": "datetime",
+    "priority_score": "double"
+   }
+  },
+  "intel.v_open_incidents_live": {
+   "kind": "view",
+   "columns": {
+    "incident_id": "varchar(64)",
+    "category_code": "varchar(64)",
+    "category_label": "varchar(128)",
+    "family": "varchar(32)",
+    "lead_dept": "varchar(16)",
+    "depts_involved": "varchar(64)",
+    "support_depts": "varchar(32)",
+    "needs_coordination": "tinyint",
+    "first_reported_at": "datetime",
+    "occurred_at_est": "datetime",
+    "last_update_at": "datetime",
+    "ward_no": "int",
+    "zone_no": "int",
+    "zone_name": "varchar(64)",
+    "taluk_code": "varchar(16)",
+    "lat": "double",
+    "lon": "double",
+    "place_text": "varchar(255)",
+    "spread_m": "double",
+    "member_count": "int",
+    "sources": "varchar(64)",
+    "source_count": "int",
+    "channels": "varchar(255)",
+    "citizen_complaints": "int",
+    "police_reports": "int",
+    "outlet_count": "int",
+    "has_official_record": "tinyint",
+    "media_only": "tinyint",
+    "is_synthetic_any": "tinyint",
+    "is_overlay_any": "tinyint",
+    "status_std": "varchar(64)",
+    "verified": "tinyint",
+    "verified_at": "datetime",
+    "closed_at": "datetime",
+    "is_open": "tinyint",
+    "severity_score": "double",
+    "severity_level": "varchar(16)",
+    "severity_reasons": "varchar(255)",
+    "dead": "double",
+    "injured": "double",
+    "persons_affected": "double",
+    "vulnerable": "varchar(128)",
+    "weather_related": "tinyint",
+    "officer": "varchar(255)",
+    "reliability": "double",
+    "confidence": "double",
+    "needs_review": "tinyint",
+    "review_reason": "varchar(128)",
+    "sla_hours": "double",
+    "sla_due_at": "datetime",
+    "hours_open": "double",
+    "hours_to_first_action": "double",
+    "sla_basis": "varchar(32)",
+    "sla_ratio": "double",
+    "sla_breached": "tinyint",
+    "growth_24h": "int",
+    "recurrence_90d": "int",
+    "rain_coupled": "tinyint",
+    "priority_score": "double",
+    "priority_reasons": "varchar(255)",
+    "awaiting_collector": "tinyint",
+    "attention_reason": "varchar(255)",
+    "attention_flag": "tinyint",
+    "title": "varchar(255)",
+    "summary": "text",
+    "hotspot_id": "varchar(64)",
+    "action_total": "int",
+    "action_done": "int",
+    "next_action_due": "datetime",
+    "hours_open_now": "decimal(22,1)",
+    "past_deadline_now": "int"
+   }
+  },
+  "intel.v_taluk_unresolved": {
+   "kind": "view",
+   "columns": {
+    "taluk_code": "varchar(16)",
+    "taluk": "varchar(32)",
+    "unresolved": "bigint"
+   }
+  },
+  "intel.v_zone_summary": {
+   "kind": "view",
+   "columns": {
+    "zone_no": "int",
+    "zone_name": "varchar(64)",
+    "incidents": "bigint",
+    "open_incidents": "decimal(25,0)",
+    "severe": "decimal(23,0)",
+    "open_past_deadline": "decimal(23,0)"
+   }
+  },
+  "intel.world_calendar": {
+   "kind": "table",
+   "columns": {
+    "date": "date",
+    "rain_event": "tinyint",
+    "rain_intensity": "double",
+    "reflected_by": "varchar(64)",
+    "declared_by": "varchar(32)",
+    "festival": "varchar(128)",
+    "protest": "varchar(128)",
+    "monsoon_phase": "varchar(32)",
+    "weekday": "varchar(32)"
+   }
+  },
+  "ops.action_updates": {
+   "kind": "table",
+   "columns": {
+    "update_id": "bigint",
+    "action_id": "varchar(64)",
+    "incident_id": "varchar(64)",
+    "dept_code": "varchar(64)",
+    "office_id": "varchar(64)",
+    "owner": "varchar(128)",
+    "text": "text",
+    "status": "varchar(32)",
+    "due_at": "datetime",
+    "note": "text",
+    "updated_by": "varchar(128)",
+    "updated_at": "datetime",
+    "applied_at": "datetime"
+   }
+  },
+  "ops.audit_log": {
+   "kind": "table",
+   "columns": {
+    "log_id": "bigint",
+    "at": "datetime",
+    "actor": "varchar(128)",
+    "action": "varchar(64)",
+    "table_name": "varchar(64)",
+    "record_id": "varchar(128)",
+    "before_value": "json",
+    "after_value": "json"
+   }
+  },
+  "ops.briefing_archive": {
+   "kind": "table",
+   "columns": {
+    "archive_id": "bigint",
+    "briefing_id": "varchar(64)",
+    "period": "varchar(16)",
+    "as_of": "datetime",
+    "window_start": "datetime",
+    "window_end": "datetime",
+    "markdown": "mediumtext",
+    "fact_pack": "mediumtext",
+    "method": "varchar(64)",
+    "issued_by": "varchar(128)",
+    "issued_at": "datetime"
+   }
+  },
+  "ops.collector_decisions": {
+   "kind": "table",
+   "columns": {
+    "decision_id": "bigint",
+    "incident_id": "varchar(64)",
+    "decision": "enum('verify','escalate','reject','resolve','reopen','note')",
+    "escalate_to": "varchar(64)",
+    "note": "text",
+    "decided_by": "varchar(128)",
+    "decided_role": "varchar(64)",
+    "decided_at": "datetime",
+    "applied_at": "datetime",
+    "superseded_by": "bigint"
+   }
+  },
+  "ops.dept_assignments": {
+   "kind": "table",
+   "columns": {
+    "incident_id": "varchar(64)",
+    "dept_code": "varchar(16)",
+    "contact_id": "int",
+    "officer_name": "varchar(128)",
+    "officer_designation": "varchar(255)",
+    "officer_phone": "varchar(128)",
+    "reason": "varchar(255)",
+    "status": "enum('Assigned','Acknowledged','Closed')",
+    "assigned_by": "varchar(128)",
+    "assigned_at": "datetime"
+   }
+  },
+  "ops.mandi_market_prices": {
+   "kind": "table",
+   "columns": {
+    "date": "date",
+    "market": "varchar(96)",
+    "commodity": "varchar(96)",
+    "variety": "varchar(96)",
+    "cmdt_group": "varchar(64)",
+    "min_price": "decimal(10,2)",
+    "max_price": "decimal(10,2)",
+    "modal_price": "decimal(10,2)",
+    "arrival": "decimal(12,3)",
+    "fetched_at": "datetime"
+   }
+  },
+  "ops.mandi_prices": {
+   "kind": "table",
+   "columns": {
+    "date": "date",
+    "scope": "varchar(24)",
+    "commodity": "varchar(96)",
+    "cmdt_group": "varchar(64)",
+    "price": "decimal(10,2)",
+    "arrival": "decimal(12,2)",
+    "msp": "decimal(10,2)",
+    "fetched_at": "datetime"
+   }
+  },
+  "ops.mandi_weekly": {
+   "kind": "table",
+   "columns": {
+    "week_start": "date",
+    "week_label": "varchar(40)",
+    "scope": "varchar(24)",
+    "commodity": "varchar(96)",
+    "price": "decimal(10,2)",
+    "districts": "int",
+    "chg_week": "decimal(7,2)",
+    "chg_month": "decimal(7,2)",
+    "chg_year": "decimal(7,2)",
+    "fetched_at": "datetime"
+   }
+  },
+  "ops.official_contacts": {
+   "kind": "table",
+   "columns": {
+    "contact_id": "int",
+    "grp": "varchar(64)",
+    "dept_code": "varchar(16)",
+    "zone_no": "int",
+    "region": "varchar(16)",
+    "rank": "int",
+    "name": "varchar(128)",
+    "designation": "varchar(255)",
+    "office": "varchar(255)",
+    "phone": "varchar(128)",
+    "email": "varchar(128)",
+    "source_url": "varchar(255)",
+    "retrieved_on": "date"
+   }
+  },
+  "ops.review_decisions": {
+   "kind": "table",
+   "columns": {
+    "decision_id": "bigint",
+    "review_id": "varchar(64)",
+    "item_type": "varchar(64)",
+    "item_id": "varchar(128)",
+    "decision": "enum('accept','reject','merge','split','relocate','approve_mapping','other')",
+    "payload": "json",
+    "note": "text",
+    "decided_by": "varchar(128)",
+    "decided_at": "datetime",
+    "applied_at": "datetime"
+   }
+  },
+  "ops.source_items": {
+   "kind": "table",
+   "columns": {
+    "item_id": "bigint",
+    "source_id": "int",
+    "hash": "char(40)",
+    "url": "varchar(700)",
+    "title": "varchar(500)",
+    "body": "text",
+    "published_at": "datetime",
+    "fetched_at": "datetime",
+    "lang": "varchar(8)",
+    "category_code": "varchar(64)",
+    "category_label": "varchar(128)",
+    "dept_code": "varchar(16)",
+    "category_conf": "float",
+    "matched_terms": "varchar(255)",
+    "zone_no": "int",
+    "ward_no": "int",
+    "taluk_code": "varchar(16)",
+    "place": "varchar(255)",
+    "place_conf": "float",
+    "lat": "double",
+    "lon": "double",
+    "place_v": "tinyint",
+    "is_incident": "tinyint",
+    "origin": "enum('fetch','ocr')"
+   }
+  },
+  "ops.source_runs": {
+   "kind": "table",
+   "columns": {
+    "run_id": "bigint",
+    "source_id": "int",
+    "started_at": "datetime",
+    "finished_at": "datetime",
+    "ok": "tinyint",
+    "http_status": "int",
+    "items_seen": "int",
+    "items_new": "int",
+    "login": "varchar(16)",
+    "attempts": "int",
+    "error": "varchar(500)",
+    "triggered_by": "varchar(128)"
+   }
+  },
+  "ops.sources": {
+   "kind": "table",
+   "columns": {
+    "source_id": "int",
+    "name": "varchar(128)",
+    "url": "varchar(500)",
+    "kind": "enum('pipeline','agmarknet','rss','html','json','ocr')",
+    "description": "varchar(500)",
+    "pipeline_key": "varchar(32)",
+    "auth": "enum('none','basic','form','token')",
+    "login_url": "varchar(500)",
+    "user_field": "varchar(64)",
+    "pass_field": "varchar(64)",
+    "username": "varchar(255)",
+    "secret_enc": "text",
+    "session_enc": "text",
+    "session_expires_at": "datetime",
+    "refresh_minutes": "int",
+    "enabled": "tinyint",
+    "status": "varchar(24)",
+    "last_run_at": "datetime",
+    "last_ok_at": "datetime",
+    "last_error": "varchar(500)",
+    "items_total": "int",
+    "created_by": "varchar(128)",
+    "created_at": "datetime"
+   }
+  },
+  "ops.workspaces": {
+   "kind": "table",
+   "columns": {
+    "workspace_id": "bigint",
+    "owner": "varchar(128)",
+    "name": "varchar(128)",
+    "version": "int",
+    "is_current": "tinyint",
+    "layout": "json",
+    "filters": "json",
+    "created_at": "datetime"
+   }
+  }
+ }
+}
