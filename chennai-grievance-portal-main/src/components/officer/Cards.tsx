@@ -86,10 +86,10 @@ export function MapCard({ c, style }: { c: Ctx; style?: CSSProperties }) {
 
 // ------------------------------------------------------------ grievances --
 
-/** column widths (%): grievance, stage, next step, severity, location, time, source */
-const COLS = [17, 13, 20, 12, 15, 12, 11];
+/** column widths (%): grievance and place, severity, reported / updated, next step */
+const COLS = [42, 15, 18, 25];
 /** table header and row heights (px) at the card's font size, for fitting whole rows */
-const ROW_H = { head: 33, row: 37 };
+const ROW_H = { head: 33, row: 47 };
 
 const EMPTY: Record<Tab, string> = {
   new: "No new grievances in this period.",
@@ -98,6 +98,7 @@ const EMPTY: Record<Tab, string> = {
   verified: "Nothing verified in this period."
 };
 
+/** The grievance board: one tab per workflow stage, the one step each grievance needs, as many rows as fit. */
 export function GrievancesCard({ c, style }: { c: Ctx; style?: CSSProperties }) {
   const [wrap, size] = useSize<HTMLDivElement>();
   const { setPer, fit } = c;
@@ -115,44 +116,44 @@ export function GrievancesCard({ c, style }: { c: Ctx; style?: CSSProperties }) 
   const recent = c.tab === "new" || c.tab === "action";
   return (
     <article className="card o-q" id="o-queue" style={style}>
-      <div className="ch"><I n="tasks" /><h3>Grievances &amp; Incidents <span>· Approve → Complete &amp; send</span></h3>
-        <div className="otabs" role="tablist" aria-label="Grievances">
-          {TABS.map((t) => (
-            <button key={t} role="tab" aria-selected={c.tab === t} className={c.tab === t ? "on" : ""} onClick={() => c.setTab(t)}>
-              {TAB_LABEL[t]} ({counts[t].toLocaleString("en-IN")})
-            </button>
-          ))}
-        </div>
+      <div className="ch"><I n="tasks" /><h3>Grievances <span>· Approve → Complete &amp; send → Collector verifies</span></h3>
         <span className="pgr">
           <span>{from}–{to} of {L?.total.toLocaleString("en-IN") ?? "…"}</span>
           <button onClick={() => c.setPage((L?.page ?? 0) - 1)} disabled={!L || L.page <= 0} aria-label="Previous page"><I n="chevl" /></button>
           <button onClick={() => c.setPage((L?.page ?? 0) + 1)} disabled={!L || L.page >= pages - 1} aria-label="Next page"><I n="chevr" /></button>
         </span>
       </div>
+      <div className="btabs oq-tabs" role="tablist" aria-label="Grievances">
+        {TABS.map((t) => (
+          <button key={t} role="tab" aria-selected={c.tab === t} className={c.tab === t ? "on" : ""} onClick={() => c.setTab(t)}>
+            {TAB_LABEL[t]} <b className="tab-n">{counts[t].toLocaleString("en-IN")}</b>
+          </button>
+        ))}
+      </div>
       <div className="cb">
         <div className="tbl-wrap" ref={wrap}>
           <table>
             <colgroup>{COLS.map((w, k) => <col key={k} style={{ width: `${w}%` }} />)}</colgroup>
-            <thead><tr><th>Grievance</th><th>Stage</th><th>Next step</th><th>Severity</th><th>Location</th><th>{recent ? "Reported" : "Updated"}</th><th>Source</th></tr></thead>
+            <thead><tr><th>Grievance</th><th>Severity</th><th>{recent ? "Reported" : "Updated"}</th><th>Next step</th></tr></thead>
             <tbody style={{ opacity: c.listLoading && L ? 0.55 : 1 }}>
               {c.listError ? (
-                <tr><td colSpan={7}><div className="o-state err"><I n="alert" />{c.listError}<button className="btn sm plain" onClick={c.retryList}>Try again</button></div></td></tr>
+                <tr><td colSpan={4}><div className="o-state err"><I n="alert" />{c.listError}<button className="btn sm plain" onClick={c.retryList}>Try again</button></div></td></tr>
               ) : !L ? (
-                Array.from({ length: 5 }, (_, k) => <tr key={k} className="o-skel">{Array.from({ length: 7 }, (_, j) => <td key={j}><span /></td>)}</tr>)
+                Array.from({ length: 5 }, (_, k) => <tr key={k} className="o-skel">{Array.from({ length: 4 }, (_, j) => <td key={j}><span /></td>)}</tr>)
               ) : L.rows.length ? (
                 L.rows.map((r) => (
                   <tr key={r.id} className={r.id === c.fresh ? "flash" : ""} onClick={() => c.openGrievance(r.id)} title={`${r.id} · ${fullTitle(r)}`}>
-                    <td className="ev">{r.type}</td>
-                    <td><StageChip r={r} compact /></td>
-                    <td><NextStep r={r} c={c} /></td>
+                    <td className="oq-g">
+                      <b>{r.type}{r.returned && <span className="chip sev-high" title={r.returnNote ?? "Returned by the Collector"}><I n="refresh" />Returned</span>}</b>
+                      <small>{[r.loc, r.zone_name ?? "Chennai"].filter(Boolean).join(" · ")}{r.complaints ? ` · ${r.complaints} complaint${r.complaints === 1 ? "" : "s"}` : ""}{r.outlets ? " · in the news" : ""}</small>
+                    </td>
                     <td><SevChip s={r.sev} /></td>
-                    <td title={`${r.loc ?? ""} · ${r.zone_name ?? "Chennai"}`}>{r.loc ?? "—"} <span className="dim">· {r.zone_name ?? "Chennai"}</span></td>
                     <td className="dim">{rel(recent ? r.t : r.updated, c.now)}</td>
-                    <td><SourceIcons r={r} /></td>
+                    <td><NextStep r={r} c={c} /></td>
                   </tr>
                 ))
               ) : (
-                <tr><td colSpan={7}><Empty>{EMPTY[c.tab]}</Empty></td></tr>
+                <tr><td colSpan={4}><Empty>{EMPTY[c.tab]}</Empty></td></tr>
               )}
             </tbody>
           </table>
@@ -309,7 +310,8 @@ export function PrioritiesCard({ c, modules, openModule, style }: {
   });
   // the first finding of every source that concerns the department (its own work record is already above)
   for (const m of modules ?? []) {
-    if (m.key === "work" || m.empty || !m.notes[0]) continue;
+    // the work record is above; complaint types have their own card beside this one
+    if (m.key === "work" || m.key === "patterns" || m.empty || !m.notes[0]) continue;
     items.push({ key: `m:${m.key}`, tone: m.stale ? "t-med" : "t-teal", icon: MODULE_ICON[m.key] ?? "doc", title: m.notes[0], sub: `${m.title} · ${m.source}`, run: () => openModule(m.key) });
   }
   return (

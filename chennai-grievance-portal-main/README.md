@@ -453,16 +453,17 @@ department comes from the database, never the URL.
 
 **Screens.** Laid out like the Collector console with the department selected: it fits the
 window (no page scroll), with the period, zone and taluk filters (the department is fixed) and
-four pages:
+two pages:
 1. *Overview*: the Collector console's own overview filtered to the department (`overview()`
    in intel.ts, so the officer and the Collector see the same figures): Severe events, Open
    incidents, Waiting for your approval, Resolved; the map; the department snapshot (head of
    department, severe or high, past deadline, due in 24 hours, most open work); By severity;
    **My Work** (to approve / in action, with Approve and Complete & send); Today's Briefing.
-2. *Grievances*: the grievance board (New / In action / Sent to Collector / Verified),
-   **What needs you now** and the Collector's feedback.
-3. *Department data*: one card per store source that concerns the department (headline
-   figures, the main finding, one chart; *Details* opens every chart and table):
+2. *Work & insights*: the work record as a strip of figures; the grievance board (New / In action /
+   Sent to Collector / Verified, with the one step each needs); **What needs you now** (approvals, work
+   the Collector returned, late and due-soon grievances, the one waiting longest, and the main finding of
+   each data source); complaint types against the previous period; and the store's data that concerns
+   the department, one row per source (*Details* opens every chart and table):
 
 | Department | Insight cards |
 |---|---|
@@ -480,7 +481,6 @@ four pages:
 | Every department | Complaint patterns: complaint types rising or falling on the previous period, the wards that report the most, how many reached the news |
 | Every department | Work record: grievances vs. the previous period, closed and closed on time, open past deadline by zone, time to close by type, places that keep coming back (hotspots), the Collector's verified / returned counts |
 
-4. *Trends*: grievances across the period, by type, by area.
 
 Periods follow the Collector console (Daily = today from midnight; Weekly, Monthly,
 Quarterly = the last 7, 30, 90 days). "Last updated" is the pipeline's collection
@@ -515,7 +515,9 @@ department's own figures, incidents of other departments are not opened, and "In
 
 **Setup**
 1. `npm install`, then `npm run setup:ops` (creates the assistant's tables in `district_intel_ops`; additive, safe to re-run).
-2. In `.env`, the AI provider: Amazon Bedrock by default (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`,
+2. AI key: `npm run ai:key` and paste the key block from the AWS access portal (or a Groq key); it updates
+   `.env` and tests the key (`npm run ai:check` tests only). Temporary AWS keys expire every few hours; the running
+   app picks up new ones without a restart. In `.env`, the AI provider: Amazon Bedrock by default (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`,
    `AWS_REGION`), or `AI_PROVIDER=groq` with `GROQ_API_KEY` (`OPENAI_API_KEY` as a fallback). Without a key it still answers the
    common questions by rules, marked "Without AI".
 3. Optional: run `scripts/create-assistant-ro-user.sql` as a MySQL admin and set `ASSISTANT_RO_DB_USER` / `_PASSWORD`, so ad-hoc

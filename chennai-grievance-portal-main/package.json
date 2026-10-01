@@ -28,7 +28,9 @@
     "validate:locations": "node scripts/validate-locations.js",
     "setup:officer": "node scripts/setup-officer-ops.js",
     "seed:officers": "node scripts/seed-officers.js",
-    "embed:build": "node scripts/build-embeddings.cjs"
+    "embed:build": "node scripts/build-embeddings.cjs",
+    "ai:key": "node scripts/set-ai-key.js",
+    "ai:check": "node scripts/set-ai-key.js --check"
   },
   "dependencies": {
     "@ai-sdk/groq": "^4.0.52",

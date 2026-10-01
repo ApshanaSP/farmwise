@@ -4,12 +4,11 @@
  * Department Officer console: one template for every department, laid out like the Collector
  * console with that department selected. It fits the window (no page scroll) and has pages:
  *
- *   1 Overview          the Collector's overview for the department (same numbers), with the
- *                       officer's work queue: approve, complete and send
- *   2 Grievances        the full grievance board, what needs the officer now, Collector feedback
- *   3 Department data   the store's data that concerns the department (weather, lakes, police
- *                       records, hospitals ...), what its grievances are about, its work record
- *   4 Trends            grievances over the period, by type, by area
+ *   1 Overview     the Collector's overview for the department (same numbers), with the
+ *                  officer's work queue: approve, complete and send
+ *   2 Work & insights   the department's figures, the grievance board, what needs the officer now,
+ *                       complaint types against before, and the store's data that concerns the
+ *                       department (weather, lakes, police records, hospitals ...)
  *
  * The department is decided on the server from the signed-in account; there is no way to open
  * another department or the Collector console from here (the Collector signs in separately).
@@ -31,9 +30,9 @@ import type { InsightModule } from "@/lib/officer/insights";
 import { OFFICER } from "@/lib/officer/departments";
 import { STAGE_LABEL, type Stage, type Tab } from "@/lib/officer/stages";
 import { OverviewPage } from "./Board";
-import { AreaCard, FeedbackCard, GrievancesCard, PrioritiesCard, TrendCard, TypeCard } from "./Cards";
 import { GrievanceDrawer } from "./Drawer";
-import { ModuleFull, ModuleTile } from "./Insights";
+import { ModuleFull } from "./Insights";
+import { WorkPage } from "./InsightsPage";
 import { ListBody, Modal } from "./Overlays";
 import { SendReport } from "./Report";
 import { PERIOD_KEYS, type Period } from "./format";
@@ -47,9 +46,9 @@ const AssistantDialog = dynamic(() => import("@/components/collector/app/assista
 const FIT_W = 1366;
 const FIT_H = 680;
 
-type PageKey = "overview" | "grievances" | "data" | "trends";
-const PAGES: PageKey[] = ["overview", "grievances", "data", "trends"];
-const PAGE_TITLE: Record<PageKey, string> = { overview: "Overview", grievances: "Grievances", data: "Department data", trends: "Trends" };
+type PageKey = "overview" | "work";
+const PAGES: PageKey[] = ["overview", "work"];
+const PAGE_TITLE: Record<PageKey, string> = { overview: "Overview", work: "Work & insights" };
 const PERIOD_WORD: Record<Period, string> = { daily: "Daily", weekly: "Weekly", monthly: "Monthly", quarterly: "Quarterly" };
 const PERIOD_HINT: Record<Period, string> = {
   daily: "Daily: only today, from midnight", weekly: "Weekly: the last 7 days", monthly: "Monthly: the last 30 days", quarterly: "Quarterly: the last 90 days"
@@ -211,7 +210,7 @@ export default function OfficerApp({ initial, user }: { initial: OfficerOverview
 
   const listKey = useRef("");
   useEffect(() => {
-    if (view !== "grievances") return;
+    if (view !== "work") return;
     let live = true;
     // another tab or area: show loading rows, not the previous tab's rows under this tab's name
     if (listKey.current !== `${tab}|${scopeQs}`) { listKey.current = `${tab}|${scopeQs}`; setList(null); }
@@ -287,7 +286,7 @@ export default function OfficerApp({ initial, user }: { initial: OfficerOverview
   const goPage = (p: PageKey) => { setView(p); setAnim(true); };
   const setTab = useCallback((t: Tab) => { setTabState(t); setPageState(0); }, []);
   /** the grievance board on page 2, at one tab */
-  const goGrievances = (t: Tab) => { setTab(t); goPage("grievances"); };
+  const goGrievances = (t: Tab) => { setTab(t); goPage("work"); };
   const setPer = useCallback((n: number) => setPerState((p) => (p === n ? p : n)), []);
   const zoneName = zone ? ov.zones.find((z) => z.zone === zone)?.name ?? `Zone ${zone}` : null;
   const talukName = taluk ? ov.taluks.find((t) => t.code === taluk)?.name ?? taluk : null;
@@ -442,9 +441,6 @@ export default function OfficerApp({ initial, user }: { initial: OfficerOverview
       : modal.kind === "contacts" ? `${dept.name} · contacts`
         : modal.kind === "news" ? `${dept.short} in the news · ${ov.periodInfo.label}`
           : `${modal.label} · ${areaName ?? dept.name}`;
-  // modules on page 3: up to three across, the rows sharing the height
-  const nMod = insights?.length ?? 0;
-  const modCols = nMod <= 3 ? Math.max(1, nMod) : nMod === 4 ? 2 : 3;
 
   return (
     <div className={`dic ofc${fit.on ? " fit" : ""}`}
@@ -521,7 +517,7 @@ export default function OfficerApp({ initial, user }: { initial: OfficerOverview
           <div className="body">
             <section className="phead">
               <h1>{PAGE_TITLE[view]}</h1>
-              {view === "trends" ? null : (
+              {(
                 <div className="filters" role="group" aria-label="Filters">
                   <div className="seg fseg" role="tablist" aria-label="Period">
                     {PERIOD_KEYS.map((p) => (
@@ -545,7 +541,6 @@ export default function OfficerApp({ initial, user }: { initial: OfficerOverview
                   {(zone || taluk) && <button className="fclear" onClick={() => { setZone(null); setTaluk(null); }}><I n="x" />Clear</button>}
                 </div>
               )}
-              {view === "trends" && <span className="fnote"><I n="map" />{ov.periodInfo.label}{areaName ? ` · ${areaName}` : " · all zones"} · {dept.name}</span>}
               <div className="pager" role="tablist" aria-label="Pages">
                 <button className="nx" onClick={() => PAGES[pi - 1] && goPage(PAGES[pi - 1])} disabled={pi <= 0} aria-label="Previous page"><I n="chevl" /></button>
                 {PAGES.map((p, k) => (
@@ -560,26 +555,12 @@ export default function OfficerApp({ initial, user }: { initial: OfficerOverview
             <div id="view" className={anim ? "anim" : ""}>
               {view === "overview" ? (
                 <OverviewPage c={c} goGrievances={goGrievances} openContacts={() => setModal({ kind: "contacts" })} openNews={() => setModal({ kind: "news" })} />
-              ) : view === "grievances" ? (
-                <section className="op2">
-                  <GrievancesCard c={c} style={{ "--i": 0 } as React.CSSProperties} />
-                  <PrioritiesCard c={c} modules={insights} openModule={openModule} style={{ "--i": 1 } as React.CSSProperties} />
-                  <FeedbackCard c={c} style={{ "--i": 2 } as React.CSSProperties} />
-                </section>
-              ) : view === "data" ? (
-                insightsError ? <div className="o-state err"><I n="alert" />{insightsError}<button className="btn sm plain" onClick={() => setInsightsRetry((n) => n + 1)}>Try again</button></div>
-                  : !insights ? <div className="o-state">Reading the department&apos;s data…</div>
-                    : (
-                      <section className={`op3${modCols === 3 ? " cols3" : ""}`} style={{ gridTemplateColumns: `repeat(${modCols},minmax(0,1fr))`, gridTemplateRows: `repeat(${Math.ceil(nMod / modCols)},minmax(0,1fr))` }}>
-                        {insights.map((m, k) => <ModuleTile key={m.key} m={m} c={c} onOpen={() => openModule(m.key)} style={{ "--i": k } as React.CSSProperties} />)}
-                      </section>
-                    )
               ) : (
-                <section className="op4">
-                  <TrendCard c={c} style={{ "--i": 0 } as React.CSSProperties} />
-                  <TypeCard c={c} style={{ "--i": 1 } as React.CSSProperties} />
-                  <AreaCard c={c} style={{ "--i": 2 } as React.CSSProperties} />
-                </section>
+                <>
+                  {insightsError && <div className="o-state err" style={{ flex: "none", padding: 8 }}><I n="alert" />{insightsError}
+                    <button className="btn sm plain" onClick={() => setInsightsRetry((n) => n + 1)}>Try again</button></div>}
+                  <WorkPage c={c} modules={insights} openModule={openModule} />
+                </>
               )}
             </div>
           </div>
