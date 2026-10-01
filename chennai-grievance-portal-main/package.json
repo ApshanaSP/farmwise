@@ -7,6 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "test": "vitest run",
+    "catalog:snapshot": "node scripts/generate-assistant-catalog.js",
     "migrate": "node scripts/migrate.js",
     "migrate:status": "node scripts/migrate.js --status",
     "import:gcc": "node scripts/import-gcc-reference.js --streets",
@@ -23,11 +25,21 @@
     "dataset:unseed": "node scripts/generate-synthetic-grievances.js --unseed",
     "seed:contacts": "node scripts/seed-official-contacts.js",
     "setup:ops": "node scripts/setup-intel-ops.js",
-    "validate:locations": "node scripts/validate-locations.js"
+    "validate:locations": "node scripts/validate-locations.js",
+    "setup:officer": "node scripts/setup-officer-ops.js",
+    "seed:officers": "node scripts/seed-officers.js",
+    "embed:build": "node scripts/build-embeddings.cjs"
   },
   "dependencies": {
+    "@ai-sdk/groq": "^4.0.52",
+    "@ai-sdk/openai": "^4.0.81",
+    "@aws-sdk/client-bedrock-runtime": "^3.1143.0",
+    "@huggingface/transformers": "^4.3.0",
+    "ai": "^7.0.122",
     "bcryptjs": "^2.4.3",
     "dotenv": "^16.4.5",
+    "echarts": "^6.1.0",
+    "echarts-for-react": "^3.0.6",
     "jose": "^5.9.6",
     "jspdf": "^2.5.2",
     "jspdf-autotable": "^3.8.4",
@@ -39,6 +51,7 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "tesseract.js": "^5.1.1",
+    "word-list": "^4.1.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {
@@ -53,6 +66,7 @@
     "eslint-config-next": "14.2.15",
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.13",
-    "typescript": "^5.6.3"
+    "typescript": "^5.6.3",
+    "vitest": "^3.2.7"
   }
 }

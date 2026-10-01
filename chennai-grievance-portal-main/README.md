@@ -391,13 +391,10 @@ exist) → `migrate.js` → `seed-gcc-reference.js`. For an existing database, r
 
 ## 11. What's Next
 
-The `department_officer` (`/officer`) and `collector` (`/collector`)
-dashboards are currently placeholder pages, gated by the same
-role-based middleware as everything else. Building them out (complaint
-review/approval queues, status updates, collector verification) reuses
-the same `complaints` / `complaint_status_history` tables and the
-`ComplaintStatus` enum already defined in `src/types/index.ts` — no
-schema changes needed.
+The Collector console (`/collector`) and the Department Officer consoles
+(`/officer`, see section 13) are built on the district intelligence store.
+Status updates to the portal's own `complaints` / `complaint_status_history`
+tables reuse the `ComplaintStatus` enum already defined in `src/types/index.ts`.
 
 **When they are built, call `appendStatusChangeToDataset(code)` from
 `src/lib/dataset/append.ts` after every status update** so the grievance
@@ -421,3 +418,119 @@ npm run dataset:unseed     # delete is_synthetic = 1 rows only, then re-export
 New complaints are appended automatically after `POST /api/complaints`
 commits. The folder is git-ignored (except its README) because it contains
 personal data from real complaints.
+
+## 13. Department Officer consoles (`/officer`)
+
+One template serves every department that owns work in the district intelligence
+store (25 today: GCC departments, Police, PWD, Government Hospitals, Metrowater,
+TANGEDCO, TNPCB, District Revenue, Disaster Management). It uses the Collector
+console's shell, theme, map and components, and reads **the same store**: the
+data is only what the `district_intel` pipeline collects in its daily 6:00 AM run.
+The console never fetches, generates or reloads data itself.
+
+**Workflow (the task pipeline to the Collector):** New → *Approve* → In action →
+*Complete & send* (remarks and at least one site photo) → Sent to Collector →
+*Verify* by the Collector. If the Collector sends it back, it returns to *In action*,
+marked **Returned** with the Collector's note, and the officer sends it again.
+
+**Link to the Collector console** (the only changes outside the officer folders):
+- `src/lib/collector/intel.ts`: reports sent from the officer console always go to
+  the Collector's *My Tasks* (first, marked "Department sent a completion report",
+  with the officer's remarks) and to the "Awaiting your verification" list and CSV,
+  until the Collector verifies or sends back. The incident pop-up shows the
+  completion report with its photos. Without the officer tables this is inert.
+- `src/components/collector/app/Detail.tsx`: the completion-report block.
+- `src/components/collector/app/SatMap.tsx`: optional `pinColor` prop.
+- The two consoles are signed into separately: `/officer` is for department officers only
+  (`middleware.ts`, `officerSession()`), and neither console links to the other. The Collector
+  verifies or sends back officers' reports from *My Tasks* on the Collector console.
+
+**Accounts.** One account per department, `officer.<code>@chennai.gov.in`, each with its
+own password (`npm run seed:officers`; the usernames and passwords are written to the
+git-ignored `officer-accounts.local.csv`). The top bar shows the name the officer signed
+in with. An officer sees only their own department and has no way to open another; the
+department comes from the database, never the URL.
+
+**Screens.** Laid out like the Collector console with the department selected: it fits the
+window (no page scroll), with the period, zone and taluk filters (the department is fixed) and
+four pages:
+1. *Overview*: the Collector console's own overview filtered to the department (`overview()`
+   in intel.ts, so the officer and the Collector see the same figures): Severe events, Open
+   incidents, Waiting for your approval, Resolved; the map; the department snapshot (head of
+   department, severe or high, past deadline, due in 24 hours, most open work); By severity;
+   **My Work** (to approve / in action, with Approve and Complete & send); Today's Briefing.
+2. *Grievances*: the grievance board (New / In action / Sent to Collector / Verified),
+   **What needs you now** and the Collector's feedback.
+3. *Department data*: one card per store source that concerns the department (headline
+   figures, the main finding, one chart; *Details* opens every chart and table):
+
+| Department | Insight cards |
+|---|---|
+| Police (POL-GCP) | Police records: cases by type, violent crime, road accidents with deaths/injuries, response time, cases by hour, by channel, by zone |
+| Government Hospitals (HLT-DMS), GCC Health, Family Welfare | Hospital MIS: bed occupancy, free beds, outpatients, emergencies, health alerts, medicine stock, ambulances, cases by disease (GCC Health also gets air quality) |
+| PWD Water Resources | Lakes (storage, near full, releasing), IMD warnings and rain, CFM-DSS inflow, works register (delays, spend, overruns), PWD field records |
+| PWD Buildings | Building works register, field records |
+| Storm Water Drain, Disaster Management | IMD warnings and rain, reservoir inflow, lakes |
+| Roads (GCC Engineering), Electrical, Parks, TANGEDCO | IMD warnings and rain (rain drives potholes, waterlogging, streetlight faults, fallen trees, power cuts) |
+| Solid Waste Management | IMD warnings and rain, air quality |
+| Bridges | IMD warnings and rain, lakes (subways flood) |
+| Metrowater | Lakes and reservoirs |
+| TNPCB | Air quality (CPCB/TNPCB stations) and air-pollution complaints |
+| District Revenue | Food prices in the Chennai Uzhavar Sandhais (AGMARKNET), weekly change |
+| Every department | Complaint patterns: complaint types rising or falling on the previous period, the wards that report the most, how many reached the news |
+| Every department | Work record: grievances vs. the previous period, closed and closed on time, open past deadline by zone, time to close by type, places that keep coming back (hotspots), the Collector's verified / returned counts |
+
+4. *Trends*: grievances across the period, by type, by area.
+
+Periods follow the Collector console (Daily = today from midnight; Weekly, Monthly,
+Quarterly = the last 7, 30, 90 days). "Last updated" is the pipeline's collection
+status (`collectionStatus()`), the same as the Collector's top-bar chip.
+**Ask District IQ** (section 14) sits on the officer console too, answering for the
+officer's department only.
+
+**Setup**
+```bash
+npm run migrate          # 011: users.dept_code (links Police, PWD, ... officers)
+npm run setup:officer    # district_intel_ops.officer_steps, officer_reports (never drops data)
+npm run seed:officers    # officer.<code>@chennai.gov.in, each department with its own password (officer-accounts.local.csv, git-ignored);
+                         # --reset-passwords gives every existing officer.<code> account a new one
+```
+
+**Access.** The officer's department is read from the database on every request,
+never from the URL or the token; another department's grievance returns 404.
+Completion photos are stored outside `public/` (`OFFICER_UPLOAD_DIR`, default
+`uploads/officer-reports`) and served only to the Collector and the sending department.
+
+## 14. Ask District IQ (assistant on the Collector and department officer consoles)
+
+A pop-up over the console (the launcher at bottom right, or Ctrl+K) that answers questions about the district's
+data in English, Tamil or Tanglish, with charts, maps and tables. It never invents a number: every figure comes from
+the console's own functions or a checked, read-only query on the same store (`district_intel` / `district_intel_ops`),
+and a verifier rejects any number that is not in the data. It fetches nothing itself.
+
+**Who can ask what.** The Collector asks about the whole district (the console's filters narrow it). A department
+officer asks from their own console and every answer is for their department only (`src/lib/assistant/access.ts`,
+`lockDept` in `pipeline.ts`): tools run with the department as their filter, rankings of all departments become the
+department's own figures, incidents of other departments are not opened, and "Insights for today" are the department's.
+
+**Setup**
+1. `npm install`, then `npm run setup:ops` (creates the assistant's tables in `district_intel_ops`; additive, safe to re-run).
+2. In `.env`, the AI provider: Amazon Bedrock by default (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`,
+   `AWS_REGION`), or `AI_PROVIDER=groq` with `GROQ_API_KEY` (`OPENAI_API_KEY` as a fallback). Without a key it still answers the
+   common questions by rules, marked "Without AI".
+3. Optional: run `scripts/create-assistant-ro-user.sql` as a MySQL admin and set `ASSISTANT_RO_DB_USER` / `_PASSWORD`, so ad-hoc
+   queries use a SELECT-only account (otherwise they run in a read-only transaction).
+
+**How it works** (`src/lib/assistant/`, `src/lib/ai/`, UI in `src/components/collector/app/assistant/`)
+- `pipeline.ts`: guard (code checks: personal data, data changes, pasted instructions) → router (fast model, or rules) → console
+  tools (`tools.ts`) or, for groupings no tool offers, the query planner + compiler (`compile.ts`; catalog-only, bound
+  parameters, 5 s limit, row caps) → facts → composer → number verifier (`verify.ts`) → chart checker (`chartspec.ts`).
+- Follow-ups ("only Zone 13", "make it a pie", "show on map") edit the previous answer. Pins re-run on fresh data.
+  "Insights for today" (`insightcards.ts`) come from the console's own `insights()`.
+- Limits (`limits.ts`): 20 questions a minute and 300 a day per user, one in flight, 20 records shown, top 10 + "Others",
+  CSV export capped at 1,000 rows (10 a day).
+
+**Routes** (`src/app/api/collector/assistant/`): `chat` (SSE), `status`, `insights`, `pins`, `feedback`, `sessions`, `export`
+(Collector or department officer); `briefing` (save as workspace) and `tools` (development only) are the Collector's.
+
+**Tests**: `npm test` (Vitest: compiler, verifier, chart checker, guards, edits, typos). Golden questions: `eval/`.

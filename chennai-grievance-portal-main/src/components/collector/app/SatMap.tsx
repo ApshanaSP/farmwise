@@ -35,6 +35,8 @@ interface Props {
   onStation: (s: MapStation) => void;
   onItem: (item: Row) => void;
   zoneTip: (zone: number) => string;
+  /** pin colour; defaults to the Collector's severe / complaint / other colours (the officer console colours by severity) */
+  pinColor?: (pin: Row) => string;
 }
 
 const HEAT = [
@@ -217,7 +219,8 @@ export default function SatMap(props: Props) {
     for (const p of shown) {
       const open = Number(p.open) === 1;
       const size = p.sev === "Severe" ? 18 : 13;
-      const html = `<div class="mpin${open ? "" : " faded"}${open && p.sev === "Severe" ? " pulse" : ""}" style="width:${size}px;height:${size}px;background:${CAT_COL[p.cat]}"></div>`;
+      const color = cb.current.pinColor?.(p) ?? CAT_COL[p.cat];
+      const html = `<div class="mpin${open ? "" : " faded"}${open && p.sev === "Severe" ? " pulse" : ""}" style="width:${size}px;height:${size}px;background:${color}"></div>`;
       s.L.marker([Number(p.lat), Number(p.lon)], {
         icon: s.L.divIcon({ className: "", html, iconSize: [size, size], iconAnchor: [size / 2, size / 2] }),
         zIndexOffset: p.sev === "Severe" ? 500 : 0

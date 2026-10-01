@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
         sort: sort === "sev" || sort === "c" || sort === "r" || sort === "d" ? sort : "t",
         dir: p.get("dir") === "1" ? 1 : -1,
         page: Math.max(0, Math.min(10_000, Number(p.get("page")) || 0)),
-        scope: p.get("scope") === "all" ? "all" : "period"
+        scope: p.get("scope") === "all" ? "all" : p.get("scope") === "30d" ? "30d" : "period"
       })
     );
   } catch (err) {

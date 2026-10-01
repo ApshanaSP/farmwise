@@ -42,7 +42,8 @@ export async function listSources() {
               DATE_FORMAT(last_run_at, '%Y-%m-%d %H:%i:%s') AS last_run_at, DATE_FORMAT(last_ok_at, '%Y-%m-%d %H:%i:%s') AS last_ok_at,
               last_error, items_total, created_by, DATE_FORMAT(session_expires_at, '%Y-%m-%d %H:%i:%s') AS session_expires_at
        FROM ${ops("sources")} ORDER BY FIELD(kind, 'pipeline', 'agmarknet', 'ocr', 'rss', 'html', 'json'), source_id`),
-    q(`SELECT source, status, minutes_since_success, \`rows\` AS row_count, DATE_FORMAT(newest_record_at, '%Y-%m-%d %H:%i:%s') AS newest FROM source_health`),
+    q(`SELECT source, status, minutes_since_success, \`rows\` AS row_count, DATE_FORMAT(newest_record_at, '%Y-%m-%d %H:%i:%s') AS newest,
+              detail, endpoints_ok AS ep_ok, endpoints_total AS ep_total FROM source_health`),
     q(`SELECT source_id, ok, error, items_new, login, DATE_FORMAT(started_at, '%Y-%m-%d %H:%i:%s') AS t FROM (
          SELECT r.*, ROW_NUMBER() OVER (PARTITION BY source_id ORDER BY run_id DESC) rn FROM ${ops("source_runs")} r) x WHERE rn <= 5`)
   ]);
@@ -52,7 +53,12 @@ export async function listSources() {
     return {
       ...s,
       enabled: Number(s.enabled) === 1,
-      status: pipe ? (pipe.status === "ok" ? "ok" : "stale") : s.status,
+      // pipeline feeds take their status from the store; "partial" = today's data arrived but some endpoints are blocked
+      status: pipe ? (pipe.status === "ok" ? "ok" : pipe.status === "degraded" ? "partial" : "stale") : s.status,
+      last_error: pipe ? (pipe.status === "degraded"
+        ? (pipe.ep_total ? `${pipe.ep_total - pipe.ep_ok} of ${pipe.ep_total} endpoints blocked by the site; the rest delivered today's data` : "Some endpoints are blocked")
+        : pipe.status === "ok" ? null : s.last_error) : s.last_error,
+      error_detail: pipe?.status === "degraded" ? pipe.detail : null,
       newest: pipe?.newest ?? s.last_ok_at,
       rows: pipe ? Number(pipe.row_count) : Number(s.items_total),
       minutes_since_success: pipe?.minutes_since_success ?? null,
@@ -159,7 +165,10 @@ export function runDueSources() {
   (async () => {
     const due = await q(
       `SELECT source_id FROM ${ops("sources")} WHERE enabled = 1 AND kind IN ('rss', 'html', 'json', 'agmarknet')
-       AND (last_run_at IS NULL OR last_run_at < NOW() - INTERVAL refresh_minutes MINUTE)`
+       AND (last_run_at IS NULL
+         -- daily sources run once a day, from 6:00 AM (server time is IST)
+         OR (refresh_minutes >= 1440 AND NOW() >= TIMESTAMP(CURDATE(), '06:00:00') AND last_run_at < TIMESTAMP(CURDATE(), '06:00:00'))
+         OR (refresh_minutes < 1440 AND last_run_at < NOW() - INTERVAL refresh_minutes MINUTE))`
     );
     for (const d of due) await runSource(d.source_id, "scheduler").catch(() => {});
   })().catch((e) => console.warn("source sweep skipped:", e.message));
@@ -371,7 +380,7 @@ export async function sourceItems(opts: { sourceId?: number; zone?: number | nul
   );
 }
 
-export interface ItemScope { now: string; days: number; zone?: number | null; dept?: string | null; cat?: string | null; taluk?: string | null }
+export interface ItemScope { now: string; days: number; /** period start; overrides days */ since?: string; zone?: number | null; dept?: string | null; cat?: string | null; taluk?: string | null }
 
 /**
  * Items from sources the Collector added (RSS, web pages, JSON, OCR'd pages) in the
@@ -380,9 +389,11 @@ export interface ItemScope { now: string; days: number; zone?: number | null; de
  */
 export async function addedItems(s: ItemScope, limit = 40) {
   void replaceStale();
-  const where = [`s.kind IN ('rss', 'html', 'json', 'ocr')`, `COALESCE(i.published_at, i.fetched_at) > (? - INTERVAL ? DAY)`,
+  // `since` (the period start, e.g. today from midnight) wins over `days`
+  const where = [`s.kind IN ('rss', 'html', 'json', 'ocr')`,
+    s.since ? `COALESCE(i.published_at, i.fetched_at) >= ?` : `COALESCE(i.published_at, i.fetched_at) > (? - INTERVAL ? DAY)`,
     `COALESCE(i.published_at, i.fetched_at) <= ? + INTERVAL 1 DAY`];
-  const params: unknown[] = [s.now, s.days, s.now];
+  const params: unknown[] = s.since ? [s.since, s.now] : [s.now, s.days, s.now];
   if (s.zone) (where.push("i.zone_no = ?"), params.push(s.zone));
   if (s.dept) (where.push("i.dept_code = ?"), params.push(s.dept));
   if (s.cat) (where.push("i.category_code = ?"), params.push(s.cat));
@@ -410,7 +421,41 @@ export type AddedItems = Awaited<ReturnType<typeof addedItems>>;
 const PIPE_DIR = path.resolve(process.cwd(), "..", "district_intel");
 const LOCK = path.join(PIPE_DIR, "output", ".dashboard-refresh.lock");
 
-/** Start `python run_pipeline.py refresh` (the same job the 30-minute schedule runs), once at a time. */
+const COLLECT_HOUR = 6;
+
+/**
+ * Has today's collection happened? Read from the pipeline's own run record
+ * (district_intel/output/state/refresh_state.json): which feeds were fetched since today's
+ * 6:00 AM, which failed, and when the last collection ran. Null when the pipeline is not
+ * installed next to the portal.
+ */
+export function collectionStatus() {
+  try {
+    const st = JSON.parse(fs.readFileSync(path.join(PIPE_DIR, "output", "state", "refresh_state.json"), "utf8"));
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), COLLECT_HOUR);
+    if (start > now) start.setDate(start.getDate() - 1);
+    const feeds = Object.entries(st).filter(([k, v]) => !k.startsWith("_") && v && typeof v === "object") as [string, Record<string, any>][];
+    const since = start.getTime() / 1000;
+    const done = feeds.filter(([, v]) => Number(v.last_ok ?? 0) >= since).map(([k]) => k);
+    const missing = feeds.filter(([, v]) => Number(v.last_ok ?? 0) < since).map(([k]) => k);
+    const lastOk = Math.max(0, ...feeds.map(([, v]) => Number(v.last_ok ?? 0)));
+    // IST wall-clock "YYYY-MM-DD HH:MM:SS", the format every time on the console uses
+    const ist = (sec: number) => new Date(sec * 1000).toLocaleString("sv-SE", { timeZone: "Asia/Kolkata" });
+    const last = Number(st._last_collection?.at ?? lastOk);
+    return {
+      dayStart: ist(since),
+      lastRun: last ? ist(last) : null,
+      done, missing, total: feeds.length,
+      running: fs.existsSync(path.join(PIPE_DIR, "output", ".refresh.lock"))
+    };
+  } catch {
+    return null;
+  }
+}
+export type CollectionStatus = ReturnType<typeof collectionStatus>;
+
+/** Start `python run_pipeline.py refresh` (the same job the daily 6:00 AM schedule runs), once at a time. */
 async function triggerPipeline() {
   if (!fs.existsSync(path.join(PIPE_DIR, "run_pipeline.py"))) return { ok: false, error: "The district_intel pipeline is not installed next to the portal.", seen: 0, items_new: 0 };
   if (fs.existsSync(LOCK) && Date.now() - fs.statSync(LOCK).mtimeMs < 15 * 60_000) return { ok: true, error: "A refresh is already running.", seen: 0, items_new: 0 };

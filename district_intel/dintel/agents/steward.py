@@ -30,7 +30,8 @@ def source_health(settings: Settings, events: pd.DataFrame, obs: pd.DataFrame, d
         age_min = (now - last_ok).total_seconds() / 60 if last_ok is not None and pd.notna(last_ok) else None
         if last_ok is None or pd.isna(last_ok):
             status = "failed"
-        elif age_min > target * 3:
+        # daily feeds are stale after a day and a half, so one missed 6:00 AM run shows; faster feeds after 3 intervals
+        elif age_min > target * (1.5 if target >= 1440 else 3):
             status = "stale"
         elif ok_parts is not None and ok_parts[0] < ok_parts[1]:
             status = "degraded"

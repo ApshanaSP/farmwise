@@ -1,7 +1,8 @@
 /**
  * Creates the dashboard's own tables in district_intel_ops for connected sources,
- * their runs and fetched items, and AGMARKNET mandi prices (state, region and each
- * Chennai market), then registers the
+ * their runs and fetched items, AGMARKNET mandi prices (state, region and each
+ * Chennai market) and the Ask District IQ assistant (conversations, feedback, pins,
+ * follow-up emails), then registers the
  * built-in sources. Idempotent: safe to re-run; never drops data.
  *
  *   node scripts/setup-intel-ops.js
@@ -27,7 +28,7 @@ const TABLES = [
     secret_enc TEXT NULL,
     session_enc TEXT NULL,
     session_expires_at DATETIME NULL,
-    refresh_minutes INT NOT NULL DEFAULT 60,
+    refresh_minutes INT NOT NULL DEFAULT 1440,
     enabled TINYINT NOT NULL DEFAULT 1,
     status VARCHAR(24) NOT NULL DEFAULT 'new',
     last_run_at DATETIME NULL,
@@ -117,6 +118,86 @@ const TABLES = [
     fetched_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (date, market, commodity, variety),
     KEY ix_market (market, commodity, date)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+  // Ask District IQ, the console's assistant: conversations, feedback, pinned charts,
+  // follow-up emails (sandboxed; sent only on the Collector's click) and their follow-ups.
+  `CREATE TABLE IF NOT EXISTS assistant_sessions (
+    session_id CHAR(36) NOT NULL PRIMARY KEY,
+    owner VARCHAR(128) NOT NULL,
+    title VARCHAR(200) NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    KEY ix_owner (owner, updated_at)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+  `CREATE TABLE IF NOT EXISTS assistant_messages (
+    message_id CHAR(36) NOT NULL PRIMARY KEY,
+    session_id CHAR(36) NOT NULL,
+    role ENUM('user','assistant') NOT NULL,
+    content_text TEXT NULL,
+    language VARCHAR(12) NULL,
+    input_mode ENUM('text','voice') NULL,
+    payload_json JSON NULL COMMENT 'the answer card as sent to the dialog',
+    plan_json JSON NULL COMMENT 'router result, tool calls and query plan, so a follow-up can edit them',
+    scope_json JSON NULL,
+    created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    KEY ix_session (session_id, created_at)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+  `CREATE TABLE IF NOT EXISTS assistant_feedback (
+    feedback_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    message_id CHAR(36) NULL,
+    insight_key VARCHAR(128) NULL,
+    owner VARCHAR(128) NOT NULL,
+    rating TINYINT NOT NULL COMMENT '1 = helpful, -1 = not helpful',
+    comment VARCHAR(500) NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY ix_message (message_id),
+    KEY ix_insight (insight_key)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+  `CREATE TABLE IF NOT EXISTS assistant_pins (
+    pin_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    owner VARCHAR(128) NOT NULL,
+    title VARCHAR(200) NOT NULL,
+    question VARCHAR(1500) NOT NULL,
+    plan_json JSON NULL COMMENT 'tools or query plan: pins re-run on fresh data, they do not store numbers',
+    chart_json JSON NULL,
+    scope_json JSON NULL,
+    position INT NOT NULL DEFAULT 0,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY ix_owner (owner, position)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+  `CREATE TABLE IF NOT EXISTS outbound_emails (
+    email_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    owner VARCHAR(128) NOT NULL,
+    to_contact_ids VARCHAR(255) NOT NULL,
+    cc_contact_ids VARCHAR(255) NULL,
+    incident_id VARCHAR(64) NULL,
+    subject VARCHAR(300) NOT NULL,
+    body TEXT NOT NULL,
+    language VARCHAR(12) NOT NULL DEFAULT 'en',
+    mode ENUM('sandbox','live') NOT NULL DEFAULT 'sandbox',
+    status ENUM('draft','approved','queued','sent','undone','failed') NOT NULL DEFAULT 'draft',
+    approved_at DATETIME NULL,
+    send_after DATETIME NULL,
+    sent_at DATETIME NULL,
+    delivered_to VARCHAR(255) NULL,
+    message_id VARCHAR(255) NULL,
+    body_hash CHAR(64) NULL COMMENT 'sha256 of what the Collector approved; the sent text must match',
+    error VARCHAR(500) NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY ix_owner (owner, created_at),
+    KEY ix_status (status, send_after)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+  `CREATE TABLE IF NOT EXISTS followups (
+    followup_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    email_id BIGINT NOT NULL,
+    contact_id INT NOT NULL,
+    incident_id VARCHAR(64) NULL,
+    summary VARCHAR(500) NOT NULL,
+    due_date DATE NULL,
+    status ENUM('pending','done','reminder_drafted','closed') NOT NULL DEFAULT 'pending',
+    last_checked_at DATETIME NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY ix_due (status, due_date)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`
 ];
 
@@ -129,15 +210,15 @@ const COLUMNS = [
 
 // Feeds the district_intel pipeline collects (status comes from its source_health table).
 const BUILTIN = [
-  ["Grievance portal", "http://localhost:3000/citizen", "pipeline", "grievance", 30, "Citizen complaints filed on this portal"],
-  ["Police incident reports", "police_dataset_generator (department export)", "pipeline", "police", 30, "Station and control-room incident records"],
-  ["PWD Water Resources", "pwd_dataset_generator (department export)", "pipeline", "pwd", 30, "Water levels, works, incidents and announcements"],
-  ["Hospital MIS", "chennai_hospital_data (department export)", "pipeline", "hospital", 30, "Government hospital capacity and alerts"],
-  ["District news monitor", "chennai_news_pipeline (English and Tamil outlets)", "pipeline", "news", 30, "District news from approved outlets, classified and clustered"],
-  ["IMD weather", "https://mausam.imd.gov.in/chennai/", "pipeline", "imd", 30, "Warnings, rainfall observations and forecasts"],
-  ["CPCB air quality", "https://airquality.cpcb.gov.in/ccr/", "pipeline", "cpcb", 30, "Continuous air-quality stations"],
-  ["Chennai Flood Monitoring (CFM-DSS)", "https://chennaifloodmonitor.tn.gov.in", "pipeline", "cfm", 30, "Lake levels, river gauges and bulletins"],
-  ["AGMARKNET mandi prices", "https://agmarknet.gov.in", "agmarknet", null, 360, "Daily prices at each Chennai market (Uzhavar Sandhai farmer markets), plus Tamil Nadu and the districts around Chennai"],
+  ["Grievance portal", "http://localhost:3000/citizen", "pipeline", "grievance", 1440, "Citizen complaints filed on this portal"],
+  ["Police incident reports", "police_dataset_generator (department export)", "pipeline", "police", 1440, "Station and control-room incident records"],
+  ["PWD Water Resources", "pwd_dataset_generator (department export)", "pipeline", "pwd", 1440, "Water levels, works, incidents and announcements"],
+  ["Hospital MIS", "chennai_hospital_data (department export)", "pipeline", "hospital", 1440, "Government hospital capacity and alerts"],
+  ["District news monitor", "chennai_news_pipeline (English and Tamil outlets)", "pipeline", "news", 1440, "District news from approved outlets, classified and clustered"],
+  ["IMD weather", "https://mausam.imd.gov.in/chennai/", "pipeline", "imd", 1440, "Warnings, rainfall observations and forecasts"],
+  ["CPCB air quality", "https://airquality.cpcb.gov.in/ccr/", "pipeline", "cpcb", 1440, "Continuous air-quality stations"],
+  ["Chennai Flood Monitoring (CFM-DSS)", "https://chennaifloodmonitor.tn.gov.in", "pipeline", "cfm", 1440, "Lake levels, river gauges and bulletins"],
+  ["AGMARKNET mandi prices", "https://agmarknet.gov.in", "agmarknet", null, 1440, "Daily prices at each Chennai market (Uzhavar Sandhai farmer markets), plus Tamil Nadu and the districts around Chennai"],
   ["Newspaper pages (OCR)", "upload://newspaper-pages", "ocr", null, 0, "Scanned or photographed newspaper pages, read with OCR in the browser"]
 ];
 
@@ -162,7 +243,7 @@ async function main() {
     );
   }
   const [[n]] = await db.query(`SELECT COUNT(*) AS n FROM sources`);
-  console.log(`${OPS}: sources, source_runs, source_items, mandi_prices, mandi_weekly, mandi_market_prices ready; ${n.n} sources registered`);
+  console.log(`${OPS}: sources, source_runs, source_items, mandi_prices, mandi_weekly, mandi_market_prices and the assistant's tables ready; ${n.n} sources registered`);
   await db.end();
 }
 

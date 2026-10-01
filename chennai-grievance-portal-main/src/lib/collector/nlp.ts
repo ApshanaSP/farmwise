@@ -128,6 +128,16 @@ async function gazetteer(): Promise<Gaz[]> {
 }
 const title = (s: string) => s.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
 
+/** Every place name the resolver knows (English), for the assistant's typo correction. */
+export async function placeNames(): Promise<string[]> {
+  return [...new Set((await gazetteer()).map((g) => g.name))];
+}
+
+/** Category labels and English keywords, for the assistant's typo correction. */
+export function categoryWords(): string[] {
+  return reference().categories.flatMap((c) => [c.label, ...(c.keywords_en ?? [])]);
+}
+
 export interface Placed { place: string; ward: number | null; zone: number | null; taluk: string | null; conf: number; lat: number | null; lon: number | null }
 
 /** Most specific place named in the text: a locality or GCC area (ward level), else a zone, else a taluk. */

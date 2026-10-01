@@ -18,3 +18,10 @@ exports/
 # The data dictionary is documentation only and stays tracked.
 data/datasets/*
 !data/datasets/README.md
+# Completion-report photos from department officers (served only through /api/officer/photos)
+uploads/
+# each department officer's username and password (npm run seed:officers)
+officer-accounts.local.csv
+# Ask District IQ: the local embedding model's download cache and the incident vector index (rebuilt from the store)
+.cache/
+data/embeddings/

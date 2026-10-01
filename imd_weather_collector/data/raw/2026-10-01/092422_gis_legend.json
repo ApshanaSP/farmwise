@@ -1,0 +1,34 @@
+{"Legend": [
+    {
+    "layerName": "district_warnings_india",
+    "title": "district_warnings_india",
+    "rules": [    {
+      "title": "gold polygon",
+      "symbolizers": [{"Polygon":       {
+        "stroke": "#111111",
+        "stroke-width": "0.1",
+        "stroke-opacity": "1",
+        "stroke-linecap": "butt",
+        "stroke-linejoin": "miter",
+        "fill": "[Interpolate(if_then_else(equalTo(env('day'),'Day1_Color'),Day1_Color,if_then_else(equalTo(env('day'),'Day2_Color'),Day2_Color,if_then_else(equalTo(env('day'),'Day3_Color'),Day3_Color,if_then_else(equalTo(env('day'),'Day4_Color'),Day4_Color,Day5_Color)))),'0','#ffffff','1','#F20505','2','#F28705','3','#F2E205','4','#078C03','color')]",
+        "fill-opacity": "1.0"
+      }}]
+    }]
+  },
+    {
+    "layerName": "India_State",
+    "title": "India_State",
+    "rules": [    {
+      "name": "Single symbol",
+      "symbolizers": [{"Polygon":       {
+        "stroke": "#111",
+        "stroke-width": "0.9",
+        "stroke-opacity": "1",
+        "stroke-linecap": "butt",
+        "stroke-linejoin": "bevel",
+        "fill": "#BEB297",
+        "fill-opacity": "0"
+      }}]
+    }]
+  }
+]}

@@ -78,7 +78,7 @@ export async function buildReport(d: Row, opt: { scope: string; dept: string | n
   fill([31, 107, 234]); doc.rect(0, 36, W, 2, "F");
   color([255, 255, 255]);
   font(10, "bold"); doc.text("DISTRICT IQ  |  Chennai Intelligent District Governance Platform", M, 11);
-  font(20, "bold"); doc.text("Collector's District Report", M, 22);
+  font(20, "bold"); doc.text(t(`Collector's ${P.word ?? "Daily"} Report`), M, 22);
   font(10); color([205, 222, 255]);
   doc.text(t(`${P.label} · ${opt.scope}${opt.dept ? ` · ${opt.dept}` : ""}`), M, 30);
   doc.text(t(`Data as of ${fmt(d.now)}  ·  Generated ${new Date().toLocaleString("en-GB", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })} IST`), W - M, 30, { align: "right" });
@@ -106,25 +106,23 @@ export async function buildReport(d: Row, opt: { scope: string; dept: string | n
   });
   y += 33;
 
-  // Key insights
-  section("Key insights");
-  const zoneTop = [...d.zoneTable].sort((a: Row, b: Row) => b.complaints - a.complaints)[0];
+  // Key points: a few plain sentences, no lists of everything
+  section("Key points");
+  const zoneTop = [...d.zoneTable].sort((a: Row, b: Row) => b.open - a.open)[0];
   const deptTop = d.bottom.byDept[0];
   const sevOpen = d.severity.counts;
-  const envLine = envSummary(d);
-  const insights = [
-    `${n(k.cur.ongoing)} incidents are open with ${n(k.cur.complaints)} citizen complaints attached (${k.cur.ongoing - k.prev.ongoing >= 0 ? "up" : "down"} ${n(Math.abs(k.cur.ongoing - k.prev.ongoing))} vs. ${P.prev}).`,
-    `${n(sevOpen.Severe)} severe and ${n(sevOpen.High)} high-severity incidents are still open in this period.`,
-    zoneTop && zoneTop.complaints ? `${zoneTop.name} carries the most open complaints (${n(zoneTop.complaints)}), with ${n(zoneTop.severe)} severe events.` : null,
-    deptTop ? `${deptTop.l} receives the most citizen complaints (${n(deptTop.v)}).` : null,
-    d.backlog ? `${d.backlog.name} has the oldest open backlog: about ${Math.round(d.backlog.hours / 24)} days per open incident (${n(d.backlog.n)} open).` : null,
-    `${n(d.tasks.count)} complaints have department action reported and are waiting for the Collector's verification.`,
-    d.stories.total ? `${n(d.stories.total)} events were reported more than once as they developed over the last ${d.stories.days} days (see Developing stories).` : null,
-    d.added.count ? `${n(d.added.count)} items came from sources you added in the last ${d.added.days} days; ${n(d.added.civic)} read as civic issues.` : null,
-    envLine
+  const R = d.report;
+  const points = [
+    `${n(k.cur.ongoing)} incidents are open (${k.cur.ongoing - k.prev.ongoing >= 0 ? "up" : "down"} ${n(Math.abs(k.cur.ongoing - k.prev.ongoing))} vs. ${P.prev}); ${n(sevOpen.Severe)} severe and ${n(sevOpen.High)} high.`,
+    `${n(R.attentionTotal ?? R.attention.length)} need your attention${(R.attentionTotal ?? 0) > R.attention.length ? ` (the ${n(R.attention.length)} most urgent are listed below; all are in the action list CSV)` : " (listed below)"}. The other ${n(R.routine)} are routine and the departments are handling them.`,
+    `${n(d.tasks.count)} closed pieces of work are waiting for your check; ${n(d.tasks.leftToDepts)} routine closures are left to department heads.`,
+    zoneTop && zoneTop.open ? `${zoneTop.name} zone has the most open incidents (${n(zoneTop.open)}).` : null,
+    deptTop && !opt.dept ? `${deptTop.l} has the most citizen complaints (${n(deptTop.v)}).` : null,
+    R.newsOnly.length ? `${n(d.snapshot.newsOnly ?? R.newsOnly.length)} open incidents are in the news with no department record.` : null,
+    envSummary(d)
   ].filter(Boolean) as string[];
   font(10); color(INK);
-  for (const s of insights) {
+  for (const s of points) {
     const lines = doc.splitTextToSize(t(s), W - 2 * M - 7);
     need(lines.length * 4.6 + 1.5);
     fill(NAVY); doc.circle(M + 1.6, y - 1.2, 0.9, "F");
@@ -133,92 +131,56 @@ export async function buildReport(d: Row, opt: { scope: string; dept: string | n
   }
   y += 3;
 
-  // Charts: department and zone bars side by side
-  section("Where the load is", P.label);
+  // Needs your attention: only the incidents that meet the attention rules, with plain reasons
+  section("Needs your attention", R.attention.length ? ((R.attentionTotal ?? 0) > R.attention.length ? `${n(R.attention.length)} most urgent of ${n(R.attentionTotal)}` : `${n(R.attention.length)} incidents, most urgent first`) : "nothing right now");
+  if (R.attention.length) {
+    table(doc, y, ["#", "Incident", "What happened", "Why it needs you"],
+      // t() flattens whitespace, so each line is cleaned on its own and the lines are joined afterwards
+      (R.attention as Row[]).map((i, k2) => [String(k2 + 1), `${title(i)}\n${t(`${i.zone_name ?? "Chennai"} / ${i.dept_name ?? i.dept} / ${i.sev}`)}`,
+        [t(i.why.summary), ...(i.why.facts ?? []).map(t)].join("\n"), (i.why.attention as string[]).map((w) => `- ${t(w)}`).join("\n")]),
+      { 0: { cellWidth: 7, halign: "center" }, 1: { cellWidth: 55 }, 2: { cellWidth: 62 } });
+    y = (doc as any).lastAutoTable.finalY + 8;
+  } else {
+    font(10); color(MUTED); doc.text("No open incident needs you in this scope. The departments are handling everything.", M, y); y += 8;
+  }
+
+  // Work waiting for the Collector's check (already filtered by the task criteria)
+  if (d.tasks.rows.length) {
+    need(30);
+    const shown = d.tasks.rows.slice(0, 8);
+    section("Work waiting for your check", d.tasks.count > shown.length ? `${n(shown.length)} most important of ${n(d.tasks.count)}; the rest are on the dashboard` : `${n(d.tasks.count)} closures`);
+    table(doc, y, ["Work", "Officer's report", "Why it is with you"],
+      shown.map((i: Row) => [`${title(i)}\n${t(i.dept_name ?? i.dept)}`, t(`${i.officer ?? "Officer"}: ${i.action?.note || i.action?.step || "reported the work as done"}`),
+        (i.because ?? []).map(t).join("\n")]),
+      { 0: { cellWidth: 70 }, 1: { cellWidth: 70 } });
+    y = (doc as any).lastAutoTable.finalY + 8;
+  }
+
+  // Where the workload is
+  need(70);
+  section("Where the workload is", P.label);
   const cw = (W - 2 * M - 6) / 2;
-  const deptRows = d.bottom.byDept.slice(0, 7).map((r: Row) => ({ l: t(r.l), v: r.v }));
-  const zoneRows = [...d.zoneTable].sort((a: Row, b: Row) => b.complaints - a.complaints).slice(0, 7).map((z: Row) => ({ l: t(z.name), v: z.complaints }));
+  const deptRows = d.bottom.byDept.slice(0, 6).map((r: Row) => ({ l: t(r.l), v: r.v }));
+  const zoneRows = [...d.zoneTable].sort((a: Row, b: Row) => b.open - a.open).slice(0, 6).map((z: Row) => ({ l: t(z.name), v: z.open }));
   const h1 = hbars(doc, M, y, cw, opt.dept ? "Incidents by category" : "Complaints by department", deptRows);
-  const h2 = hbars(doc, M + cw + 6, y, cw, "Open complaints by zone", zoneRows);
+  const h2 = hbars(doc, M + cw + 6, y, cw, "Open incidents by zone", zoneRows);
   y += Math.max(h1, h2) + 6;
 
-  // Severity mix + trend
-  need(58);
-  const sm = d.severityMix as Row[];
-  sevBar(doc, M, y, cw, sm);
-  trend(doc, M + cw + 6, y, cw, "Trend across the period", [
-    { l: "Complaints", v: k.series.complaints, c: [224, 115, 13] },
-    { l: "Ongoing", v: k.series.ongoing, c: NAVY },
-    { l: "Severe", v: k.series.severe, c: SEV.Severe }
-  ]);
-  y += 56;
+  // In the news, no department record
+  if (R.newsOnly.length) {
+    need(30);
+    section("In the news, no department record", `top ${n(R.newsOnly.length)}`);
+    table(doc, y, ["Report", "Where", "Department it belongs to", "Reported"],
+      (R.newsOnly as Row[]).map((i) => [title(i), t(i.zone_name ?? "Chennai"), t(i.dept_name ?? i.dept), fmt(i.t)]),
+      { 0: { cellWidth: 80 } });
+    y = (doc as any).lastAutoTable.finalY + 8;
+  }
 
-  // ---------------------------------------------------------- environment --
-  doc.addPage(); y = 18;
+  // Environment
+  if (y + 70 > H - 16) { doc.addPage(); y = 18; }
   section("Environment", "latest reading and change vs. the previous one");
   env(doc, y, d);
   y += 62;
-
-  // Tasks
-  section("Awaiting your verification", `${n(d.tasks.count)} complaints`);
-  table(doc, y, ["Complaint", "Department / officer", "Action reported by the officer", "Reported by"],
-    d.tasks.rows.map((i: Row) => [title(i), t(`${i.dept_name ?? i.dept}${i.officer ? ` / ${i.officer}` : ""}`), t(i.action?.note ?? i.action?.step ?? "-"), sourcesText(i)]),
-    { 0: { cellWidth: 52 }, 1: { cellWidth: 42 }, 2: { cellWidth: 56 } });
-  y = (doc as any).lastAutoTable.finalY + 8;
-
-  // ------------------------------------------------ incidents by priority --
-  doc.addPage(); y = 18;
-  const ongoing = d.report.ongoing as Row[];
-  section("Ongoing incidents by priority", `${n(k.cur.ongoing)} open in this period`);
-  for (const s of ["Severe", "High", "Medium", "Low"]) {
-    const rows = ongoing.filter((i) => i.sev === s);
-    if (!rows.length) continue;
-    need(20);
-    fill(SEV[s]); doc.roundedRect(M, y - 4, 3.5, 5, 1, 1, "F");
-    font(11, "bold"); color(SEV[s]);
-    doc.text(`${s} priority`, M + 6, y);
-    font(9); color(MUTED);
-    doc.text(t(`${n(d.severityMix.find((x: Row) => x.sev === s)?.open ?? rows.length)} open${rows.length < (d.severityMix.find((x: Row) => x.sev === s)?.open ?? 0) ? `, top ${rows.length} shown` : ""}`), W - M, y, { align: "right" });
-    y += 3;
-    table(doc, y, ["Incident", "Zone / department", "Reported by", "Reported", "Why it matters"],
-      rows.map((i) => [title(i), t(`${i.zone_name ?? "-"} / ${i.dept_name ?? i.dept}`), sourcesText(i), fmt(i.t), reasons(i) || "-"]),
-      { 0: { cellWidth: 48 }, 1: { cellWidth: 34 }, 2: { cellWidth: 26 }, 3: { cellWidth: 22 } }, SEV[s]);
-    y = (doc as any).lastAutoTable.finalY + 8;
-  }
-
-  // Open complaints
-  const comp = d.report.complaints as Row[];
-  if (comp.length) {
-    need(30);
-    section("Open citizen complaints", `${n(k.cur.complaints)} complaints in ${n(comp.length)} incidents shown`);
-    table(doc, y, ["Complaint", "Zone", "Department", "Severity", "Status", "Complaints", "Reported"],
-      comp.map((i) => [title(i), t(i.zone_name ?? "-"), t(i.dept_name ?? i.dept), i.sev, t(i.status), String(i.complaints), fmt(i.t)]),
-      { 0: { cellWidth: 58 }, 5: { halign: "right" } });
-    y = (doc as any).lastAutoTable.finalY + 8;
-  }
-
-  // Developing stories: the same event followed over time, each report with its stage
-  const threads = (d.stories.threads as Row[]).slice(0, 12);
-  if (threads.length) {
-    need(30);
-    section("Developing stories", `the same event reported over time, last ${d.stories.days} days`);
-    table(doc, y, ["Story", "Where / category", "What happened, in order"],
-      threads.map((s) => [t(s.title), t(`${s.place ?? "Chennai"} / ${s.catLabel ?? "-"}`),
-        (s.days as Row[]).flatMap((g) => (g.steps as Row[]).map((x) => t(`${fmt(x.t)} - ${x.stage}: ${x.title} (${x.publisher ?? "News"})`))).slice(0, 8).join("\n")]),
-      { 0: { cellWidth: 55 }, 1: { cellWidth: 32 } });
-    y = (doc as any).lastAutoTable.finalY + 8;
-  }
-
-  // From added sources: items read from the links the Collector added
-  const added = (d.added.items as Row[]).slice(0, 12);
-  if (added.length) {
-    need(30);
-    section("From added sources", `${n(d.added.count)} items, last ${d.added.days} days`);
-    table(doc, y, ["Item", "Source", "Place", "Category", "Published", "Link"],
-      added.map((i) => [t(i.title), t(i.source), t(i.place ?? i.zone_name ?? "-"), t(i.category_label ?? "-"), fmt(i.t), t(i.url ?? "-")]),
-      { 0: { cellWidth: 62 }, 5: { cellWidth: 45 } });
-    y = (doc as any).lastAutoTable.finalY + 8;
-  }
 
   // ------------------------------------------------------------- footer --
   const pages = doc.getNumberOfPages();
@@ -349,18 +311,12 @@ function env(doc: jsPDF, y: number, d: Row) {
       const diff = Math.round((c.s.now - c.s.prev) * 10) / 10;
       const bad = diff === 0 ? null : (diff > 0) === c.upBad;
       const col: RGB = bad == null ? MUTED : bad ? SEV.Severe : SEV.Low;
-      if (diff) {
-        doc.setFillColor(...col);
-        if (diff > 0) doc.triangle(x + w - 30, y + 17.5, x + w - 26, y + 17.5, x + w - 28, y + 14, "F");
-        else doc.triangle(x + w - 30, y + 14, x + w - 26, y + 14, x + w - 28, y + 17.5, "F");
-      }
-      doc.setFontSize(9); doc.setTextColor(...col);
-      doc.text(diff ? `${diff > 0 ? "+" : "-"}${Math.abs(diff).toFixed(c.dec)}` : "Steady", x + w - 24, y + 17.5);
-      doc.setFont("helvetica", "normal"); doc.setFontSize(7.5); doc.setTextColor(...MUTED); doc.text("vs. previous", x + w - 24, y + 21.5);
+      doc.setFont("helvetica", "normal"); doc.setFontSize(8.5); doc.setTextColor(...col);
+      doc.text(diff ? `${diff > 0 ? "up" : "down"} ${Math.abs(diff).toFixed(c.dec)} vs. previous reading` : "steady vs. previous reading", x + 4, y + 28.5);
     }
     const v = c.s.series.slice(-24);
     if (v.length > 1) {
-      const top = y + 30, h = 20, mx = Math.max(...v), mn = Math.min(...v, c.h === "Rainfall" ? 0 : Infinity), rg = mx - mn || 1;
+      const top = y + 32, h = 19, mx = Math.max(...v), mn = Math.min(...v, c.h === "Rainfall" ? 0 : Infinity), rg = mx - mn || 1;
       doc.setDrawColor(...c.c); doc.setLineWidth(0.6);
       for (let k = 1; k < v.length; k++) {
         doc.line(x + 4 + ((k - 1) / (v.length - 1)) * (w - 8), top + h - ((v[k - 1] - mn) / rg) * h,
