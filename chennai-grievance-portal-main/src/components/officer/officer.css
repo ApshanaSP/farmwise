@@ -286,3 +286,80 @@
 .dic .op3.cols3 .otile .oin-kpi{padding:5px 9px;flex-direction:row;align-items:baseline;justify-content:space-between;gap:6px}
 .dic .op3.cols3 .otile .oin-kpi span{display:none}
 .dic .op3.cols3 .otile .oin-kpi b{font-size:17px;flex:none;max-width:60%}
+
+/* ---------- page 3: Insights (one page: performance, findings, trend, types, area, district data) ---------- */
+.dic .oikpis .kpi{padding:8px 12px;gap:11px}
+.dic .oikpis .kpi-ic{width:38px;height:38px;border-radius:11px}
+.dic .oikpis .kpi-n{font-size:24px}
+.dic .oikpis .oi-sub{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
+.dic .op3i{flex:1;min-height:0;display:grid;gap:12px;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr) minmax(0,1fr);
+  grid-template-rows:minmax(0,1fr) minmax(0,1fr);grid-template-areas:"say tr types" "say area src"}
+.dic .oi-say{grid-area:say}.dic .oi-tr{grid-area:tr}.dic .oi-types{grid-area:types}.dic .oi-area{grid-area:area}.dic .oi-src{grid-area:src}
+.dic .oi-tr,.dic .oi-area{min-height:0;display:flex}
+.dic .oi-tr>.card,.dic .oi-area>.card{flex:1;min-width:0}
+.dic .oi-f{display:flex;gap:10px;align-items:flex-start;width:100%;text-align:left;padding:8px 6px;border-bottom:1px solid var(--line-2);border-radius:10px}
+.dic .oi-f:hover{background:var(--accent-soft)}
+.dic .oi-f b{display:block;font-size:13.5px;font-weight:600;line-height:1.35;color:var(--text)}
+.dic .oi-f small{display:block;font-size:12px;color:var(--text-3);margin-top:2px}
+.dic .oi-type{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:3px 10px;align-items:center;padding:5px 2px}
+.dic .oi-tl{font-weight:600;font-size:13.5px;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dic .oi-tn{font:700 13px var(--dic-mono),monospace;text-align:right;white-space:nowrap}
+.dic .oi-tn small{font:500 11.5px var(--dic-sans),sans-serif;color:var(--text-3)}
+.dic .oi-ch{font:700 11.5px var(--dic-sans),sans-serif;padding:1px 7px;border-radius:7px;background:var(--surface-2);color:var(--text-3);min-width:48px;text-align:center}
+.dic .oi-ch.up{background:var(--sev-soft);color:var(--sev)}
+.dic .oi-ch.down{background:var(--low-soft);color:var(--low)}
+.dic .oi-bar{grid-column:1/-1;height:7px;border-radius:6px;background:var(--surface-2);overflow:hidden}
+.dic .oi-bar i{display:block;height:100%;border-radius:6px;background:linear-gradient(90deg,#1560E8,#6699F5)}
+.dic .oi-s{display:flex;flex-direction:column;gap:6px;width:100%;text-align:left;padding:9px 10px;margin-bottom:8px;border-radius:12px;border:1px solid var(--line-2);background:var(--surface-2)}
+.dic .oi-s:hover{background:#fff;border-color:#C4D6F7}
+.dic .oi-sh{display:flex;align-items:center;gap:7px;min-width:0}
+.dic .oi-sh>.ic:first-child{color:var(--accent);width:17px;height:17px}
+.dic .oi-sh b{font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
+.dic .oi-sh>.ic:last-child{width:15px;height:15px;color:var(--text-3)}
+.dic .oi-sh .chip{font-size:11px;padding:1px 7px}
+.dic .oi-sk{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.dic .oi-sk>span{display:flex;flex-direction:column;min-width:0;background:#fff;border-radius:8px;padding:4px 8px;border-left:3px solid var(--accent)}
+.dic .oi-sk small{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dic .oi-sk b{font:800 15px var(--dic-display),sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dic .oi-sk .k-sev{border-left-color:var(--sev)}.dic .oi-sk .k-sev b{color:var(--sev)}
+.dic .oi-sk .k-high{border-left-color:var(--high)}.dic .oi-sk .k-med{border-left-color:var(--med)}
+.dic .oi-sk .k-low{border-left-color:var(--low)}.dic .oi-sk .k-violet{border-left-color:var(--violet)}
+.dic .oi-empty{font-size:12.5px;color:var(--text-3)}
+.dic:not(.fit) .op3i{grid-template-columns:minmax(0,1fr);grid-template-rows:none;grid-template-areas:none}
+.dic:not(.fit) .op3i>*{grid-area:auto;height:400px}
+
+/* the department's district data: one compact row per source, so up to four fit */
+.dic .oi-src .oi-s{flex-direction:row;align-items:center;gap:10px;padding:7px 8px 7px 10px;margin-bottom:6px}
+.dic .oi-src .oi-sh{flex:1;min-width:0}
+.dic .oi-st{display:flex;flex-direction:column;min-width:0;line-height:1.2}
+.dic .oi-st b{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dic .oi-st small{font-size:11px;color:var(--text-3)}
+.dic .oi-st small.old{color:var(--high);font-weight:600}
+.dic .oi-src .oi-sk{display:flex;gap:5px;flex:none}
+.dic .oi-src .oi-sk>span{width:84px;padding:3px 7px}
+.dic .oi-src .oi-sk b{font-size:13.5px}
+.dic .oi-src .oi-s>.ic:last-child{width:15px;height:15px;color:var(--text-3);flex:none}
+.dic .oi-src .fitlist{flex-wrap:nowrap;overflow-y:auto}
+.dic .oi-src .oi-s{padding:5px 8px 5px 10px;margin-bottom:5px}
+.dic .oi-src .oi-sk>span{padding:2px 7px}
+
+/* ---------- page 2: Work & insights (figures strip; board | what needs you now | complaint types / district data) ---------- */
+.dic .opw{flex:1;min-height:0;display:grid;gap:12px;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr) minmax(0,1fr);
+  grid-template-rows:minmax(0,1fr) minmax(0,1fr);grid-template-areas:"q pri types" "q pri src"}
+.dic .opw .o-q{grid-area:q}.dic .opw .o-pri{grid-area:pri}.dic .opw .oi-types{grid-area:types}.dic .opw .oi-src,.dic .opw .o-fb{grid-area:src}
+.dic .o-skel-k{min-height:64px;background:linear-gradient(90deg,var(--surface),#EEF3FB,var(--surface));background-size:200% 100%;animation:o-shimmer 1.2s linear infinite}
+/* the grievance board: tabs on their own row, a two-line grievance cell */
+.dic .oq-tabs{margin:-2px 14px 6px}
+.dic .o-q .ch h3 span{font-size:12.5px}
+.dic .o-q td.oq-g{white-space:normal;line-height:1.25}
+.dic .oq-g b{display:flex;align-items:center;gap:6px;font-size:13.5px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dic .oq-g b .chip{font-size:10.5px;padding:1px 6px;flex:none}
+.dic .oq-g small{display:block;font-size:12px;color:var(--text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+.dic .o-q td{height:46px}
+/* what needs you now: tighter rows so the whole list is in view */
+.dic .opw .opri{padding:7px 6px}
+.dic .opw .opri b{font-size:13px}
+.dic .opw .opri small{font-size:12px}
+.dic:not(.fit) .opw{grid-template-columns:minmax(0,1fr);grid-template-rows:none;grid-template-areas:none}
+.dic:not(.fit) .opw>*{grid-area:auto!important;height:420px}
+.dic .opw .opri b{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}

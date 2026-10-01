@@ -157,3 +157,16 @@ Setup on another machine: `npm run setup:ops` (adds the new table and columns), 
 | 2 | No navigation between the consoles; Collector signs in separately | `/officer` is for department officers only (middleware and API guard); the Collector's "Department console" link and the Collector view of the officer console (department switcher, read-only mode) are removed |
 | 3 | Chatbot "should use the API I have given" | The chatbot is wired to the zip's provider (Amazon Bedrock, or Groq/OpenAI). No key was found in the portal `.env` or in the zip, so it still answers "Without AI" by rules until a key is added |
 | 4 | Data always unified | Every figure comes from `district_intel` / `district_intel_ops`; page 1 calls the Collector console's `overview()` |
+
+# Round 13 (2026-10-01): one Insights page; AI key for the demo
+
+| # | Request | What was done |
+|---|---|---|
+| 1 | Department data and Trends pages not clear; make one page with meaningful insights | Pages 3 and 4 merged into **Insights** (`InsightsPage.tsx`): work-record figures strip, "What the data says" (plain findings, the main one of each source first, each opens its data), trend, complaint types against the previous period with rise/fall chips, open by area, and the department's district data as compact rows with Details. Fits one screen |
+| 2 | Chatbot key changes every 3 hours; use the key given at the demo | `npm run ai:key`: paste the AWS portal's key block (any format) or a Groq key; it writes `.env` and tests the key. The app re-reads keys on the next question, no restart |
+
+# Round 14 (2026-10-01): pages 2 and 3 merged into one "Work & insights" page
+
+| # | Request | What was done |
+|---|---|---|
+| 1 | Pages 2 and 3 repeat each other; one page with the insights the officer mainly needs, clearer and easier | Two pages now: Overview and **Work & insights**. Page 2: work-record figures; the grievance board (4 clear columns: grievance with place and complaints, severity, reported, next step; tabs on their own row); What needs you now (the single list of things to act on, plus the main finding of each data source); complaint types against the previous period; the department's district data (Collector feedback when there is none). Dropped as repeats: "What the data says" (same findings as What needs you now), Trend and Open by zone (on page 1's map and snapshot) |
